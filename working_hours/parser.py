@@ -124,6 +124,26 @@ def apply_corrections(raw: list[ClockEvent], corrections: list[CorrectionItem]) 
     return events
 
 
+def validate_raw_content(content: str) -> tuple[bool, str]:
+    """Return (True, '') if content has at least one parseable clock event."""
+    for line in content.splitlines():
+        if line.startswith("#"):
+            continue
+        parts = line.split("\t")
+        if len(parts) < 4:
+            continue
+        raw_id = parts[0].strip().rstrip(".")
+        if not raw_id.isdigit():
+            continue
+        time_str = re.sub(r"\s+", " ", parts[3].strip())
+        try:
+            datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
+            return True, ""
+        except ValueError:
+            continue
+    return False, "No valid clock events found. Expected tab-separated rows: ID, Name, Dept, Timestamp (YYYY-MM-DD HH:MM:SS)."
+
+
 def collect_raw_files(args: list[str]) -> list[Path]:
     """Resolve CLI arguments to raw input .txt files.
 

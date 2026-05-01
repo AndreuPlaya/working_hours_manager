@@ -7,6 +7,7 @@ from werkzeug.utils import secure_filename
 
 from ..auth import admin_required
 from ..data import _load_events, _raw_dir
+from ..parser import validate_raw_content
 from ..settings import _load_settings, _save_settings
 
 admin_bp = Blueprint("admin", __name__)
@@ -162,8 +163,12 @@ def admin_upload_raw_file():
         return jsonify(ok=False, error="No filename."), 400
     if not name.lower().endswith(".txt"):
         return jsonify(ok=False, error="Only .txt files are accepted."), 400
+    content = f.read().decode("utf-8", errors="replace")
+    ok, error = validate_raw_content(content)
+    if not ok:
+        return jsonify(ok=False, name=name, error=error), 422
     _raw_dir().mkdir(parents=True, exist_ok=True)
-    f.save(str(_raw_dir() / name))
+    (_raw_dir() / name).write_text(content, encoding="utf-8")
     return jsonify(ok=True, name=name)
 
 

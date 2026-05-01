@@ -67,17 +67,13 @@
   <div id="tab-datafiles" hidden>
     <div class="section-title">Raw Input Data</div>
     <div class="section-sub">Upload <code>.txt</code> export files from the clocking system.</div>
-    <div class="add-box">
-      <h3>Upload File</h3>
-      <div class="add-row">
-        <div class="add-field">
-          <label>File <span style="color:#94a3b8;font-weight:400">(.txt only)</span></label>
-          <input type="file" id="upload-input" accept=".txt" style="font-size:.8rem;padding:.3rem 0">
-        </div>
-        <div style="padding-top:1.35rem"><button class="btn btn-primary" onclick="uploadFile()">Upload</button></div>
-      </div>
-      <div class="add-err" id="upload-err"></div>
+    <div class="drop-zone" id="drop-zone">
+      <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      <div class="drop-zone-text">Drag &amp; drop <code>.txt</code> files here</div>
+      <div class="drop-zone-sub">or <span class="drop-zone-browse">browse files</span></div>
+      <input type="file" id="upload-input" accept=".txt" multiple>
     </div>
+    <div class="add-err" id="upload-err"></div>
     <div style="overflow-x:auto">
     <table>
       <thead><tr>
@@ -244,18 +240,29 @@ function renderDataFiles(){
   }).join('');
 }
 
-async function uploadFile(){
-  var inp=document.getElementById('upload-input');
+async function uploadFiles(files){
   var err=document.getElementById('upload-err');
   err.textContent='';
-  if(!inp.files.length){err.textContent='Select a file first.';return;}
-  var fd=new FormData();
-  fd.append('file',inp.files[0]);
-  var r=await fetch('/api/admin/raw-files',{method:'POST',body:fd});
-  var d=await r.json();
-  if(d.ok){inp.value='';toast('Uploaded: '+d.name);init();}
-  else err.textContent=d.error||'Upload failed.';
+  if(!files||!files.length)return;
+  var results=await Promise.all(Array.from(files).map(async function(file){
+    var fd=new FormData();
+    fd.append('file',file);
+    var r=await fetch('/api/admin/raw-files',{method:'POST',body:fd});
+    return r.json();
+  }));
+  var ok=results.filter(function(d){return d.ok;});
+  var fail=results.filter(function(d){return !d.ok;});
+  if(ok.length){toast('Uploaded '+ok.length+' file'+(ok.length>1?'s':'')+'.');init();}
+  if(fail.length)err.textContent=fail.map(function(d){return (d.name?d.name+': ':'')+( d.error||'Upload failed.');}).join(' | ');
 }
+
+var _dz=document.getElementById('drop-zone');
+var _inp=document.getElementById('upload-input');
+_dz.addEventListener('click',function(e){if(e.target!==_inp)_inp.click();});
+_inp.addEventListener('change',function(){uploadFiles(_inp.files).then(function(){_inp.value='';});});
+_dz.addEventListener('dragover',function(e){e.preventDefault();_dz.classList.add('drag-over');});
+_dz.addEventListener('dragleave',function(e){if(!_dz.contains(e.relatedTarget))_dz.classList.remove('drag-over');});
+_dz.addEventListener('drop',function(e){e.preventDefault();_dz.classList.remove('drag-over');uploadFiles(e.dataTransfer.files);});
 
 document.getElementById('files-body').addEventListener('click',function(e){
   var delBtn=e.target.closest('.f-del');

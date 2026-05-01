@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "working-hours-manager"
+version = "0.1.0"
+requires-python = ">=3.10"
+
+[tool.setuptools.packages.find]
+include = ["working_hours*"]
+
+[tool.setuptools.package-data]
+working_hours = ["templates/*.html", "static/css/*.css", "static/scss/*.scss"]
+
+[project.optional-dependencies]
+display = ["rich"]
+watch   = ["watchdog>=4.0"]
+editor  = ["flask>=3.0", "libsass>=0.23.0", "waitress>=3.0"]
+dev     = ["pytest>=8", "pytest-cov", "flask>=3.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["working_hours"]
+omit   = ["working_hours/watcher.py"]
+
+[tool.coverage.report]
+show_missing = true
+
+[project.scripts]
+working-hours        = "working_hours.__main__:main"
+working-hours-watch  = "working_hours.watcher:watch"
+working-hours-editor = "working_hours.server:serve"

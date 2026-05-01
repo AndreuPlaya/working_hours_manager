@@ -1,0 +1,24 @@
+# Runtime data — never commit (employee records, password hashes, config)
+data/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# Test & coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Claude Code — local-only settings and memory (project settings.json is tracked)
+CLAUDE.md
+.claude/settings.local.json
+.claude/projects/
+
+# Editor
+.idea/
+.vscode/
+*.swp

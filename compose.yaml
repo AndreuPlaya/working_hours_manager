@@ -1,0 +1,8 @@
+services:
+  working-hours:
+    build: .
+    restart: unless-stopped
+    volumes:
+      - ./data:/data
+    ports:
+      - "8080:5000"

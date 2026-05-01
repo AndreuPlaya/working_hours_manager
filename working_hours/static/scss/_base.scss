@@ -1,0 +1,40 @@
+// Shared base for editor, admin, and login pages
+@import "variables";
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body { font-family: system-ui, sans-serif; background: $bg; color: $text; }
+
+header {
+  background: $accent; color: #fff;
+  padding: .7rem 1.25rem; display: flex; align-items: center; gap: .35rem;
+  h1 { font-size: 1.1rem; font-weight: 600; flex: 1; }
+}
+
+.hdr-icon {
+  color: #fff; opacity: .72; text-decoration: none;
+  width: 34px; height: 34px; border-radius: .4rem;
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: opacity .15s, background .15s; flex-shrink: 0;
+  &:hover { opacity: 1; background: rgba(255,255,255,.18); }
+}
+
+.btn {
+  border: none; border-radius: .375rem; cursor: pointer; font-weight: 500;
+  transition: background .15s;
+  &-primary { background: $accent; color: #fff; &:hover { background: $accent-dark; } }
+  &-danger  { background: $danger; color: #fff; &:hover { background: $danger-dark; } }
+  &-secondary { background: $border; color: $text; &:hover { background: $input-border; } }
+}
+
+label { display: block; font-size: .75rem; font-weight: 500; margin-bottom: .25rem; color: $text-label; }
+
+input:focus, select:focus { outline: 2px solid $accent; border-color: transparent; }
+
+.toast {
+  position: fixed; bottom: 1.5rem; right: 1.5rem;
+  background: $text; color: #fff; padding: .6rem 1rem;
+  border-radius: .375rem; font-size: .82rem; opacity: 0;
+  transition: opacity .3s; z-index: 200; pointer-events: none;
+  &.show { opacity: 1; }
+}

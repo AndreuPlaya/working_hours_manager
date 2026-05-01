@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{ name }} – {{ year }}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/report.css') }}">
+</head>
+<body>
+<a class="back" href="/reports/" title="All reports" aria-label="All reports">
+  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+  All reports
+</a>
+<h1>{{ name }}</h1>
+<p class="meta">{{ dept }} · ID {{ emp_id }}</p>
+{% for month in months %}
+<h2>{{ month.label }}</h2>
+<table>
+  <thead><tr><th>Date</th><th>Clock In</th><th>Clock Out</th><th class="dur">Duration</th></tr></thead>
+  <tbody>
+    {% for row in month.rows %}
+    {% if row.is_subtotal %}
+    <tr class="subtotal"><td></td><td></td><td>day total</td><td class="dur">{{ row.duration }}</td></tr>
+    {% elif row.is_incomplete %}
+    <tr class="incomplete"><td>{{ row.date_label }}</td><td>{{ row.clock_in }}</td><td>?</td><td class="dur">incomplete</td></tr>
+    {% else %}
+    <tr><td>{{ row.date_label }}</td><td>{{ row.clock_in }}</td><td>{{ row.clock_out }}</td><td class="dur">{{ row.duration }}</td></tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+<p class="month-total">Month total: {{ month.total }}</p>
+{% endfor %}
+<p class="year-total">Year total: {{ year_total }}</p>
+<script>if(window.self!==window.top)document.querySelector('.back').style.display='none';</script>
+</body>
+</html>

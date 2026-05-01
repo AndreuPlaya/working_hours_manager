@@ -1,0 +1,19 @@
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}body{font-family:system-ui, sans-serif;max-width:860px;margin:2rem auto;padding:0 1.5rem;color:#1f2937;background:#fff}a{color:#2563eb;text-decoration:none}a:hover{text-decoration:underline}h1{font-size:1.5rem;border-bottom:2px solid #e5e7eb;padding-bottom:.5rem;margin-bottom:.25rem}.meta{color:#6b7280;font-size:.875rem;margin-bottom:2rem}h2{font-size:1rem;color:#374151;margin:2rem 0 .375rem}table{width:100%;border-collapse:collapse;font-size:.875rem}th{text-align:left;padding:.4rem .75rem;background:#f9fafb;border-bottom:2px solid #e5e7eb;font-weight:600;color:#374151}td{padding:.3rem .75rem;border-bottom:1px solid #f3f4f6}tr:hover td{background:#f9fafb}.dur{text-align:right;font-variant-numeric:tabular-nums}tr.subtotal td{font-weight:600;background:#f3f4f6}tr.incomplete td{color:#dc2626}.month-total{text-align:right;margin-top:.5rem;font-weight:600;color:#374151}.year-total{text-align:right;margin-top:2rem;padding-top:.75rem;border-top:2px solid #e5e7eb;font-size:1.1rem;font-weight:700}.back{display:inline-flex;align-items:center;gap:.35rem;margin-bottom:1.25rem;font-size:.875rem}
+@media print{
+  @page{margin:1.5cm 1.5cm 2cm}
+  body{max-width:none;margin:0;padding:0;font-size:.8rem;color:#000;background:#fff}
+  .back{display:none}
+  h1{font-size:1.25rem;border-bottom:1.5pt solid #000;margin-bottom:.2rem}
+  .meta{margin-bottom:1rem;font-size:.75rem;color:#444}
+  h2{margin:1.2rem 0 .25rem;page-break-after:avoid}
+  table{font-size:.78rem;page-break-inside:auto}
+  thead{display:table-header-group}
+  tr{page-break-inside:avoid}
+  th{background:#eee;color:#000;border-bottom:1.5pt solid #000;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  td{border-bottom:.5pt solid #ccc}
+  tr:hover td{background:none}
+  tr.subtotal td{background:#f0f0f0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  tr.incomplete td{color:#c00}
+  .month-total{margin-top:.3rem}
+  .year-total{margin-top:1.5rem;border-top:1.5pt solid #000}
+}

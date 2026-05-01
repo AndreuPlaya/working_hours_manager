@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Working Hours — Login</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/login.css') }}">
+</head>
+<body>
+<div class="card">
+  <div class="logo">
+    <div class="logo-icon">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="#fff"><path d="M12 2a10 10 0 1 0 0 20A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67V7z"/></svg>
+    </div>
+    <div><h1>Working Hours</h1><div class="sub">Sign in to continue</div></div>
+  </div>
+  {% if error %}<div class="error">{{ error }}</div>{% endif %}
+  <form method="post" action="/login">
+    <div class="fg">
+      <label for="u">Username</label>
+      <input type="text" id="u" name="username" autocomplete="username" required autofocus>
+    </div>
+    <div class="fg">
+      <label for="p">Password</label>
+      <input type="password" id="p" name="password" autocomplete="current-password" required>
+    </div>
+    <button type="submit" class="btn">Sign in</button>
+  </form>
+</div>
+</body>
+</html>

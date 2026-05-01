@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Working Hours — Reports</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/report_index.css') }}">
+</head>
+<body>
+<h1>Working Hours</h1>
+{% for year in years %}
+<h2>{{ year }}</h2>
+<ul>
+  {% for entry in stems_by_year[year] %}
+  <li><a href="/reports/{{ entry.stem }}">{{ entry.display }}</a></li>
+  {% endfor %}
+</ul>
+{% endfor %}
+</body>
+</html>

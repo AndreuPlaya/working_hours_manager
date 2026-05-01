@@ -1,0 +1,27 @@
+@import "variables";
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: system-ui, sans-serif; max-width: 480px; margin: 2rem auto;
+  padding: 0 1.5rem; color: $report-text;
+}
+
+h1 {
+  font-size: 1.5rem; border-bottom: 2px solid $report-border;
+  padding-bottom: .5rem; margin-bottom: 1.5rem;
+}
+
+h2 {
+  font-size: .75rem; color: $report-text-dim; text-transform: uppercase;
+  letter-spacing: .08em; margin: 1.25rem 0 .25rem;
+}
+
+ul { list-style: none; }
+
+li { border-bottom: 1px solid $report-border-light; }
+
+a {
+  display: block; padding: .45rem 0; color: $accent; font-size: .95rem;
+  &:hover { text-decoration: underline; }
+}

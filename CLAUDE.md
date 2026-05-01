@@ -26,8 +26,10 @@ pip install -e ".[dev]"             # add pytest for running tests
 ### Run the web editor
 
 ```bash
-working-hours-editor                # serves on http://0.0.0.0:5000
+DATA_DIR=data working-hours-editor  # serves on http://0.0.0.0:5000
 ```
+
+`DATA_DIR` controls where the server looks for `input_data/`, `corrections/`, and `config/`. Defaults to `.` (current directory). Set to `data` when running locally with the `data/` subdirectory layout.
 
 Or via Docker Compose:
 

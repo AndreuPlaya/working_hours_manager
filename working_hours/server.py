@@ -1,6 +1,7 @@
 """Flask application factory and server entry point."""
 from __future__ import annotations
 
+import os
 import secrets
 from pathlib import Path
 
@@ -15,7 +16,7 @@ app = Flask(__name__)
 app.secret_key = secrets.token_hex(16)
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16 MB upload limit
 
-_root = Path(".")
+_root = Path(os.environ.get("DATA_DIR", "."))
 
 app.register_blueprint(setup_bp)
 app.register_blueprint(auth_bp)

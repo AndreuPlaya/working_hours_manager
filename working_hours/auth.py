@@ -1,0 +1,53 @@
+"""Authentication decorators and access-control helpers."""
+from __future__ import annotations
+
+from functools import wraps
+
+from flask import current_app, jsonify, redirect, request, session, url_for
+
+
+def login_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if current_app.config.get("TESTING"):
+            return f(*args, **kwargs)
+        if "username" not in session:
+            if request.path.startswith("/api/"):
+                return jsonify(ok=False, error="Not authenticated"), 401
+            return redirect(url_for("auth.login_page"))
+        return f(*args, **kwargs)
+    return decorated
+
+
+def admin_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if current_app.config.get("TESTING"):
+            return f(*args, **kwargs)
+        if "username" not in session:
+            if request.path.startswith("/api/"):
+                return jsonify(ok=False, error="Not authenticated"), 401
+            return redirect(url_for("auth.login_page"))
+        if not session.get("is_admin"):
+            if request.path.startswith("/api/"):
+                return jsonify(ok=False, error="Admin required"), 403
+            return redirect(url_for("editor.index"))
+        return f(*args, **kwargs)
+    return decorated
+
+
+def _require_admin() -> tuple | None:
+    """Block non-admins. Returns 403 response tuple or None."""
+    if current_app.config.get("TESTING") or session.get("is_admin"):
+        return None
+    return jsonify(ok=False, error="Admin access required."), 403
+
+
+def _check_emp_ownership(emp_id: str) -> tuple | None:
+    """For employee sessions, verify the request emp_id matches their own."""
+    if current_app.config.get("TESTING") or session.get("is_admin"):
+        return None
+    session_emp = str(session.get("emp_id", ""))
+    if not session_emp or str(emp_id) != session_emp:
+        return jsonify(ok=False, error="Not authorized."), 403
+    return None

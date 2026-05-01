@@ -127,7 +127,7 @@ async function load(){
   restrictEdits=cfg.restrict_edits;
   document.getElementById('hdr-user').textContent=cfg.username||'';
   document.getElementById('hdr-admin').style.display=cfg.is_admin?'':'none';
-  document.getElementById('hdr-pw').style.display=cfg.username?'':'none';
+  document.getElementById('hdr-pw').style.display=(cfg.username&&!cfg.is_admin)?'':'none';
   if(!isAdmin)document.querySelector('.sidebar').style.display='none';
   renderSidebar();
   if(!isAdmin&&first){showReportMode();return;}

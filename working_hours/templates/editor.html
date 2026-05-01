@@ -361,6 +361,7 @@ async function submitPwChange(){
 }
 function post(url,body){return fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});}
 function toast(msg){var el=document.getElementById('toast');el.textContent=msg;el.classList.add('show');setTimeout(function(){el.classList.remove('show');},2500);}
+window.addEventListener('storage',function(e){if(e.key==='raw-data-changed')load();});
 load();
 </script>
 </body>

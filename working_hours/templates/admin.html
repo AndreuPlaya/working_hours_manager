@@ -252,7 +252,7 @@ async function uploadFiles(files){
   }));
   var ok=results.filter(function(d){return d.ok;});
   var fail=results.filter(function(d){return !d.ok;});
-  if(ok.length){toast('Uploaded '+ok.length+' file'+(ok.length>1?'s':'')+'.');init();}
+  if(ok.length){toast('Uploaded '+ok.length+' file'+(ok.length>1?'s':'')+'.');localStorage.setItem('raw-data-changed',Date.now());init();}
   if(fail.length)err.textContent=fail.map(function(d){return (d.name?d.name+': ':'')+( d.error||'Upload failed.');}).join(' | ');
 }
 
@@ -271,7 +271,7 @@ document.getElementById('files-body').addEventListener('click',function(e){
   if(!confirm('Delete "'+name+'"? This cannot be undone.'))return;
   fetch('/api/admin/raw-files/'+encodeURIComponent(name),{method:'DELETE'})
     .then(function(r){return r.json();})
-    .then(function(d){d.ok?(toast('Deleted.'),init()):toast('Error: '+d.error);});
+    .then(function(d){d.ok?(toast('Deleted.'),localStorage.setItem('raw-data-changed',Date.now()),init()):toast('Error: '+d.error);});
 });
 
 function postJSON(url,body){return fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(function(r){return r.json();});}

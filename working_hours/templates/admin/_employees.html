@@ -1,0 +1,62 @@
+<div id="tab-employees">
+  <div class="section-title">Employees</div>
+  <div class="section-sub">Set alias (shown in editor), full name (used in reports), and login credentials for each employee.</div>
+  <div style="overflow-x:auto">
+  <table>
+    <thead><tr>
+      <th>ID</th><th>Name in Data</th><th>Alias</th><th>Full Name</th>
+      <th>Username</th><th>Password</th><th>Status</th><th></th>
+    </tr></thead>
+    <tbody id="emp-body"></tbody>
+  </table>
+  </div>
+</div>
+
+<script>
+function renderEmployees(){
+  var tbody=document.getElementById('emp-body');
+  if(!empData.length){
+    tbody.innerHTML='<tr><td colspan="8" class="empty-cell">No employees found in raw data.</td></tr>';
+    return;
+  }
+  tbody.innerHTML=empData.map(function(e,i){
+    return '<tr>'+
+      '<td><code>'+escH(e.emp_id)+'</code></td>'+
+      '<td style="color:#64748b">'+escH(e.raw_name)+'</td>'+
+      '<td><input type="text" class="e-alias" value="'+escA(e.alias)+'" placeholder="Alias" style="width:100px"></td>'+
+      '<td><input type="text" class="e-fname" value="'+escA(e.full_name)+'" placeholder="Full name" style="width:150px"></td>'+
+      '<td><input type="text" class="e-user" value="'+escA(e.username)+'" placeholder="username" style="width:100px"></td>'+
+      '<td><div class="pw-row"><input type="password" class="e-pw" placeholder="New password" style="width:110px"><button class="btn btn-secondary e-setpw" data-idx="'+i+'">Set</button></div></td>'+
+      '<td><select class="e-status">'+(e.enabled===false?'<option value="disabled" selected>Disabled</option><option value="enabled">Enabled</option>':'<option value="enabled" selected>Enabled</option><option value="disabled">Disabled</option>')+'</select></td>'+
+      '<td><button class="btn btn-primary e-save" data-idx="'+i+'">Save</button></td>'+
+    '</tr>';
+  }).join('');
+}
+
+document.getElementById('emp-body').addEventListener('click',function(e){
+  var saveBtn=e.target.closest('.e-save');
+  if(saveBtn){
+    var i=+saveBtn.dataset.idx, emp=empData[i], row=saveBtn.closest('tr');
+    var payload={
+      alias:row.querySelector('.e-alias').value,
+      full_name:row.querySelector('.e-fname').value,
+      username:row.querySelector('.e-user').value,
+      enabled:row.querySelector('.e-status').value==='enabled'
+    };
+    putJSON('/api/admin/employees/'+encodeURIComponent(emp.emp_id),payload)
+      .then(function(d){d.ok?toast('Saved.'):toast('Error: '+d.error);if(d.ok)init();});
+    return;
+  }
+  var pwBtn=e.target.closest('.e-setpw');
+  if(pwBtn){
+    var i=+pwBtn.dataset.idx, emp=empData[i];
+    var pw=pwBtn.closest('tr').querySelector('.e-pw').value;
+    if(!pw){toast('Enter a password first.');return;}
+    putJSON('/api/admin/employees/'+encodeURIComponent(emp.emp_id),{password:pw})
+      .then(function(d){
+        if(d.ok){pwBtn.closest('tr').querySelector('.e-pw').value='';toast('Password set.');}
+        else toast('Error: '+d.error);
+      });
+  }
+});
+</script>

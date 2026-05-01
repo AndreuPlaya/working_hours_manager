@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Working Hours — Admin</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
+<script>var empData=[], admData=[], filesData=[], filesSortKey='name', filesSortAsc=true;</script>
 </head>
 <body>
 <header>
@@ -32,67 +33,13 @@
     </button>
   </div>
 
-  <div id="tab-employees">
-    <div class="section-title">Employees</div>
-    <div class="section-sub">Set alias (shown in editor), full name (used in reports), and login credentials for each employee.</div>
-    <div style="overflow-x:auto">
-    <table>
-      <thead><tr>
-        <th>ID</th><th>Name in Data</th><th>Alias</th><th>Full Name</th>
-        <th>Username</th><th>Password</th><th>Status</th><th></th>
-      </tr></thead>
-      <tbody id="emp-body"></tbody>
-    </table>
-    </div>
-  </div>
-
-  <div id="tab-admins" hidden>
-    <div class="section-title">System Admins</div>
-    <div class="section-sub">Admin accounts are not linked to any employee. They have full access to all data and settings.</div>
-    <table>
-      <thead><tr><th>Username</th><th>New Password</th><th></th></tr></thead>
-      <tbody id="adm-body"></tbody>
-    </table>
-    <div class="add-box">
-      <h3>Add System Admin</h3>
-      <div class="add-row">
-        <div class="add-field"><label>Username</label><input type="text" id="adm-user" placeholder="username" style="width:140px"></div>
-        <div class="add-field"><label>Password</label><input type="password" id="adm-pass" placeholder="password" style="width:140px"></div>
-        <div style="padding-top:1.1rem"><button class="btn btn-primary" onclick="createAdmin()">Add Admin</button></div>
-      </div>
-      <div class="add-err" id="adm-err"></div>
-    </div>
-  </div>
-
-  <div id="tab-datafiles" hidden>
-    <div class="section-title">Raw Input Data</div>
-    <div class="section-sub">Upload <code>.txt</code> export files from the clocking system.</div>
-    <div class="drop-zone" id="drop-zone">
-      <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-      <div class="drop-zone-text">Drag &amp; drop <code>.txt</code> files here</div>
-      <div class="drop-zone-sub">or <span class="drop-zone-browse">browse files</span></div>
-      <input type="file" id="upload-input" accept=".txt" multiple>
-    </div>
-    <div class="add-err" id="upload-err"></div>
-    <div style="overflow-x:auto">
-    <table>
-      <thead><tr>
-        <th class="sortable" onclick="sortFiles('name')">File<span class="sort-arrow" id="sarr-name"></span></th>
-        <th class="sortable" onclick="sortFiles('size')">Size<span class="sort-arrow" id="sarr-size"></span></th>
-        <th class="sortable" onclick="sortFiles('modified')">Modified<span class="sort-arrow" id="sarr-modified"></span></th>
-        <th></th>
-      </tr></thead>
-      <tbody id="files-body"></tbody>
-    </table>
-    </div>
-  </div>
+  {% include 'admin/_employees.html' %}
+  {% include 'admin/_admins.html' %}
+  {% include 'admin/_datafiles.html' %}
 </div>
 <div class="toast" id="toast"></div>
 
 <script>
-var empData=[], admData=[], filesData=[];
-var filesSortKey='name', filesSortAsc=true;
-
 async function init(){
   var [er,ar,fr]=await Promise.all([fetch('/api/admin/employees'),fetch('/api/admin/admins'),fetch('/api/admin/raw-files')]);
   empData=await er.json(); admData=await ar.json(); filesData=await fr.json();
@@ -107,173 +54,8 @@ function showTab(name,btn){
   btn.classList.add('active');
 }
 
-function renderEmployees(){
-  var tbody=document.getElementById('emp-body');
-  if(!empData.length){
-    tbody.innerHTML='<tr><td colspan="8" class="empty-cell">No employees found in raw data.</td></tr>';
-    return;
-  }
-  tbody.innerHTML=empData.map(function(e,i){
-    return '<tr>'+
-      '<td><code>'+escH(e.emp_id)+'</code></td>'+
-      '<td style="color:#64748b">'+escH(e.raw_name)+'</td>'+
-      '<td><input type="text" class="e-alias" value="'+escA(e.alias)+'" placeholder="Alias" style="width:100px"></td>'+
-      '<td><input type="text" class="e-fname" value="'+escA(e.full_name)+'" placeholder="Full name" style="width:150px"></td>'+
-      '<td><input type="text" class="e-user" value="'+escA(e.username)+'" placeholder="username" style="width:100px"></td>'+
-      '<td><div class="pw-row"><input type="password" class="e-pw" placeholder="New password" style="width:110px"><button class="btn btn-secondary e-setpw" data-idx="'+i+'">Set</button></div></td>'+
-      '<td><select class="e-status">'+(e.enabled===false?'<option value="disabled" selected>Disabled</option><option value="enabled">Enabled</option>':'<option value="enabled" selected>Enabled</option><option value="disabled">Disabled</option>')+'</select></td>'+
-      '<td><button class="btn btn-primary e-save" data-idx="'+i+'">Save</button></td>'+
-    '</tr>';
-  }).join('');
-}
-
-function renderAdmins(){
-  var tbody=document.getElementById('adm-body');
-  if(!admData.length){
-    tbody.innerHTML='<tr><td colspan="3" class="empty-cell">No system admins configured.</td></tr>';
-    return;
-  }
-  tbody.innerHTML=admData.map(function(a,i){
-    return '<tr>'+
-      '<td><strong>'+escH(a.username)+'</strong></td>'+
-      '<td><div class="pw-row"><input type="password" class="a-pw" placeholder="New password" style="width:140px"><button class="btn btn-secondary a-setpw" data-idx="'+i+'">Set</button></div></td>'+
-      '<td>'+(a.username==='admin'?'':('<button class="btn btn-danger a-del" data-idx="'+i+'">Delete</button>'))+'</td>'+
-    '</tr>';
-  }).join('');
-}
-
 function escH(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function escA(s){return (s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;');}
-
-// Employees table events
-document.getElementById('emp-body').addEventListener('click',function(e){
-  var saveBtn=e.target.closest('.e-save');
-  if(saveBtn){
-    var i=+saveBtn.dataset.idx, emp=empData[i], row=saveBtn.closest('tr');
-    var payload={
-      alias:row.querySelector('.e-alias').value,
-      full_name:row.querySelector('.e-fname').value,
-      username:row.querySelector('.e-user').value,
-      enabled:row.querySelector('.e-status').value==='enabled'
-    };
-    putJSON('/api/admin/employees/'+encodeURIComponent(emp.emp_id),payload)
-      .then(function(d){d.ok?toast('Saved.'):toast('Error: '+d.error);if(d.ok)init();});
-    return;
-  }
-  var pwBtn=e.target.closest('.e-setpw');
-  if(pwBtn){
-    var i=+pwBtn.dataset.idx, emp=empData[i];
-    var pw=pwBtn.closest('tr').querySelector('.e-pw').value;
-    if(!pw){toast('Enter a password first.');return;}
-    putJSON('/api/admin/employees/'+encodeURIComponent(emp.emp_id),{password:pw})
-      .then(function(d){
-        if(d.ok){pwBtn.closest('tr').querySelector('.e-pw').value='';toast('Password set.');}
-        else toast('Error: '+d.error);
-      });
-  }
-});
-
-// Admins table events
-document.getElementById('adm-body').addEventListener('click',function(e){
-  var pwBtn=e.target.closest('.a-setpw');
-  if(pwBtn){
-    var i=+pwBtn.dataset.idx, a=admData[i];
-    var pw=pwBtn.closest('tr').querySelector('.a-pw').value;
-    if(!pw){toast('Enter a password first.');return;}
-    putJSON('/api/admin/admins/'+encodeURIComponent(a.username),{password:pw})
-      .then(function(d){
-        if(d.ok){pwBtn.closest('tr').querySelector('.a-pw').value='';toast('Password updated.');}
-        else toast('Error: '+d.error);
-      });
-    return;
-  }
-  var delBtn=e.target.closest('.a-del');
-  if(delBtn){
-    var a=admData[+delBtn.dataset.idx];
-    if(!confirm('Delete admin "'+a.username+'"?'))return;
-    fetch('/api/admin/admins/'+encodeURIComponent(a.username),{method:'DELETE'})
-      .then(function(r){return r.json();})
-      .then(function(d){d.ok?(toast('Deleted.'),init()):toast('Error: '+d.error);});
-  }
-});
-
-async function createAdmin(){
-  var u=document.getElementById('adm-user').value.trim();
-  var pw=document.getElementById('adm-pass').value;
-  var err=document.getElementById('adm-err');
-  err.textContent='';
-  var d=await postJSON('/api/admin/admins',{username:u,password:pw});
-  if(d.ok){document.getElementById('adm-user').value='';document.getElementById('adm-pass').value='';toast('Admin created.');init();}
-  else err.textContent=d.error||'Error.';
-}
-
-function sortFiles(key){
-  if(filesSortKey===key){filesSortAsc=!filesSortAsc;}else{filesSortKey=key;filesSortAsc=true;}
-  renderDataFiles();
-}
-
-function renderDataFiles(){
-  ['name','size','modified'].forEach(function(k){
-    var el=document.getElementById('sarr-'+k);
-    if(el)el.textContent=k===filesSortKey?(filesSortAsc?' ↑':' ↓'):'';
-  });
-  var tbody=document.getElementById('files-body');
-  if(!filesData.length){
-    tbody.innerHTML='<tr><td colspan="4" class="empty-cell">No files in raw_input_data/.</td></tr>';
-    return;
-  }
-  var sorted=filesData.slice().sort(function(a,b){
-    var av=a[filesSortKey], bv=b[filesSortKey];
-    if(typeof av==='string')av=av.toLowerCase(),bv=bv.toLowerCase();
-    var r=av<bv?-1:av>bv?1:0;
-    return filesSortAsc?r:-r;
-  });
-  tbody.innerHTML=sorted.map(function(f){
-    var sz=f.size<1024?f.size+'B':f.size<1048576?(f.size/1024).toFixed(1)+'KB':(f.size/1048576).toFixed(2)+'MB';
-    var dt=new Date(f.modified*1000).toLocaleString(undefined,{year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
-    return '<tr>'+
-      '<td><code>'+escH(f.name)+'</code></td>'+
-      '<td style="color:#64748b">'+sz+'</td>'+
-      '<td style="color:#64748b">'+dt+'</td>'+
-      '<td><button class="btn btn-danger f-del" data-name="'+escA(f.name)+'">Delete</button></td>'+
-    '</tr>';
-  }).join('');
-}
-
-async function uploadFiles(files){
-  var err=document.getElementById('upload-err');
-  err.textContent='';
-  if(!files||!files.length)return;
-  var results=await Promise.all(Array.from(files).map(async function(file){
-    var fd=new FormData();
-    fd.append('file',file);
-    var r=await fetch('/api/admin/raw-files',{method:'POST',body:fd});
-    return r.json();
-  }));
-  var ok=results.filter(function(d){return d.ok;});
-  var fail=results.filter(function(d){return !d.ok;});
-  if(ok.length){toast('Uploaded '+ok.length+' file'+(ok.length>1?'s':'')+'.');localStorage.setItem('raw-data-changed',Date.now());init();}
-  if(fail.length)err.textContent=fail.map(function(d){return (d.name?d.name+': ':'')+( d.error||'Upload failed.');}).join(' | ');
-}
-
-var _dz=document.getElementById('drop-zone');
-var _inp=document.getElementById('upload-input');
-_dz.addEventListener('click',function(e){if(e.target!==_inp)_inp.click();});
-_inp.addEventListener('change',function(){uploadFiles(_inp.files).then(function(){_inp.value='';});});
-_dz.addEventListener('dragover',function(e){e.preventDefault();_dz.classList.add('drag-over');});
-_dz.addEventListener('dragleave',function(e){if(!_dz.contains(e.relatedTarget))_dz.classList.remove('drag-over');});
-_dz.addEventListener('drop',function(e){e.preventDefault();_dz.classList.remove('drag-over');uploadFiles(e.dataTransfer.files);});
-
-document.getElementById('files-body').addEventListener('click',function(e){
-  var delBtn=e.target.closest('.f-del');
-  if(!delBtn)return;
-  var name=delBtn.dataset.name;
-  if(!confirm('Delete "'+name+'"? This cannot be undone.'))return;
-  fetch('/api/admin/raw-files/'+encodeURIComponent(name),{method:'DELETE'})
-    .then(function(r){return r.json();})
-    .then(function(d){d.ok?(toast('Deleted.'),localStorage.setItem('raw-data-changed',Date.now()),init()):toast('Error: '+d.error);});
-});
-
 function postJSON(url,body){return fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(function(r){return r.json();});}
 function putJSON(url,body){return fetch(url,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(function(r){return r.json();});}
 function toast(msg){var el=document.getElementById('toast');el.textContent=msg;el.classList.add('show');setTimeout(function(){el.classList.remove('show');},2500);}

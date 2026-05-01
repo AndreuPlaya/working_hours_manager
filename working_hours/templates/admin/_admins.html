@@ -1,0 +1,67 @@
+<div id="tab-admins" hidden>
+  <div class="section-title">System Admins</div>
+  <div class="section-sub">Admin accounts are not linked to any employee. They have full access to all data and settings.</div>
+  <table>
+    <thead><tr><th>Username</th><th>New Password</th><th></th></tr></thead>
+    <tbody id="adm-body"></tbody>
+  </table>
+  <div class="add-box">
+    <h3>Add System Admin</h3>
+    <div class="add-row">
+      <div class="add-field"><label>Username</label><input type="text" id="adm-user" placeholder="username" style="width:140px"></div>
+      <div class="add-field"><label>Password</label><input type="password" id="adm-pass" placeholder="password" style="width:140px"></div>
+      <div style="padding-top:1.1rem"><button class="btn btn-primary" onclick="createAdmin()">Add Admin</button></div>
+    </div>
+    <div class="add-err" id="adm-err"></div>
+  </div>
+</div>
+
+<script>
+function renderAdmins(){
+  var tbody=document.getElementById('adm-body');
+  if(!admData.length){
+    tbody.innerHTML='<tr><td colspan="3" class="empty-cell">No system admins configured.</td></tr>';
+    return;
+  }
+  tbody.innerHTML=admData.map(function(a,i){
+    return '<tr>'+
+      '<td><strong>'+escH(a.username)+'</strong></td>'+
+      '<td><div class="pw-row"><input type="password" class="a-pw" placeholder="New password" style="width:140px"><button class="btn btn-secondary a-setpw" data-idx="'+i+'">Set</button></div></td>'+
+      '<td>'+(a.username==='admin'?'':('<button class="btn btn-danger a-del" data-idx="'+i+'">Delete</button>'))+'</td>'+
+    '</tr>';
+  }).join('');
+}
+
+document.getElementById('adm-body').addEventListener('click',function(e){
+  var pwBtn=e.target.closest('.a-setpw');
+  if(pwBtn){
+    var i=+pwBtn.dataset.idx, a=admData[i];
+    var pw=pwBtn.closest('tr').querySelector('.a-pw').value;
+    if(!pw){toast('Enter a password first.');return;}
+    putJSON('/api/admin/admins/'+encodeURIComponent(a.username),{password:pw})
+      .then(function(d){
+        if(d.ok){pwBtn.closest('tr').querySelector('.a-pw').value='';toast('Password updated.');}
+        else toast('Error: '+d.error);
+      });
+    return;
+  }
+  var delBtn=e.target.closest('.a-del');
+  if(delBtn){
+    var a=admData[+delBtn.dataset.idx];
+    if(!confirm('Delete admin "'+a.username+'"?'))return;
+    fetch('/api/admin/admins/'+encodeURIComponent(a.username),{method:'DELETE'})
+      .then(function(r){return r.json();})
+      .then(function(d){d.ok?(toast('Deleted.'),init()):toast('Error: '+d.error);});
+  }
+});
+
+async function createAdmin(){
+  var u=document.getElementById('adm-user').value.trim();
+  var pw=document.getElementById('adm-pass').value;
+  var err=document.getElementById('adm-err');
+  err.textContent='';
+  var d=await postJSON('/api/admin/admins',{username:u,password:pw});
+  if(d.ok){document.getElementById('adm-user').value='';document.getElementById('adm-pass').value='';toast('Admin created.');init();}
+  else err.textContent=d.error||'Error.';
+}
+</script>

@@ -1,0 +1,100 @@
+<div id="tab-datafiles" hidden>
+  <div class="section-title">Raw Input Data</div>
+  <div class="section-sub">Upload <code>.txt</code> export files from the clocking system.</div>
+  <div class="drop-zone" id="drop-zone">
+    <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+    <div class="drop-zone-text">Drag &amp; drop <code>.txt</code> files here</div>
+    <div class="drop-zone-sub">or <span class="drop-zone-browse">browse files</span></div>
+    <input type="file" id="upload-input" accept=".txt" multiple>
+  </div>
+  <div class="add-err" id="upload-err"></div>
+  <div style="overflow-x:auto">
+  <table>
+    <thead><tr>
+      <th class="sortable" onclick="sortFiles('name')">File<span class="sort-arrow" id="sarr-name"></span></th>
+      <th class="sortable" onclick="sortFiles('size')">Size<span class="sort-arrow" id="sarr-size"></span></th>
+      <th class="sortable" onclick="sortFiles('modified')">Modified<span class="sort-arrow" id="sarr-modified"></span></th>
+      <th></th>
+    </tr></thead>
+    <tbody id="files-body"></tbody>
+  </table>
+  </div>
+</div>
+
+<script>
+function sortFiles(key){
+  if(filesSortKey===key){filesSortAsc=!filesSortAsc;}else{filesSortKey=key;filesSortAsc=true;}
+  renderDataFiles();
+}
+
+function renderDataFiles(){
+  ['name','size','modified'].forEach(function(k){
+    var el=document.getElementById('sarr-'+k);
+    if(el)el.textContent=k===filesSortKey?(filesSortAsc?' ↑':' ↓'):'';
+  });
+  var tbody=document.getElementById('files-body');
+  if(!filesData.length){
+    tbody.innerHTML='<tr><td colspan="4" class="empty-cell">No files in raw_input_data/.</td></tr>';
+    return;
+  }
+  var sorted=filesData.slice().sort(function(a,b){
+    var av=a[filesSortKey], bv=b[filesSortKey];
+    if(typeof av==='string')av=av.toLowerCase(),bv=bv.toLowerCase();
+    var r=av<bv?-1:av>bv?1:0;
+    return filesSortAsc?r:-r;
+  });
+  tbody.innerHTML=sorted.map(function(f){
+    var sz=f.size<1024?f.size+'B':f.size<1048576?(f.size/1024).toFixed(1)+'KB':(f.size/1048576).toFixed(2)+'MB';
+    var dt=new Date(f.modified*1000).toLocaleString(undefined,{year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+    return '<tr>'+
+      '<td><code>'+escH(f.name)+'</code></td>'+
+      '<td style="color:#64748b">'+sz+'</td>'+
+      '<td style="color:#64748b">'+dt+'</td>'+
+      '<td><button class="btn btn-danger f-del" data-name="'+escA(f.name)+'">Delete</button></td>'+
+    '</tr>';
+  }).join('');
+}
+
+async function uploadFiles(files){
+  var err=document.getElementById('upload-err');
+  err.textContent='';
+  if(!files||!files.length)return;
+  var existingNames=new Set(filesData.map(function(f){return f.name.toLowerCase();}));
+  var conflicts=Array.from(files).filter(function(f){return existingNames.has(f.name.toLowerCase());});
+  if(conflicts.length){
+    var names=conflicts.map(function(f){return '"'+f.name+'"';}).join(', ');
+    var msg=conflicts.length===1
+      ?'File '+names+' already exists. Overwrite?'
+      :'Files '+names+' already exist. Overwrite all?';
+    if(!confirm(msg))return;
+  }
+  var results=await Promise.all(Array.from(files).map(async function(file){
+    var fd=new FormData();
+    fd.append('file',file);
+    var r=await fetch('/api/admin/raw-files',{method:'POST',body:fd});
+    return r.json();
+  }));
+  var ok=results.filter(function(d){return d.ok;});
+  var fail=results.filter(function(d){return !d.ok;});
+  if(ok.length){toast('Uploaded '+ok.length+' file'+(ok.length>1?'s':'')+'.');localStorage.setItem('raw-data-changed',Date.now());init();}
+  if(fail.length)err.textContent=fail.map(function(d){return (d.name?d.name+': ':'')+( d.error||'Upload failed.');}).join(' | ');
+}
+
+var _dz=document.getElementById('drop-zone');
+var _inp=document.getElementById('upload-input');
+_dz.addEventListener('click',function(e){if(e.target!==_inp)_inp.click();});
+_inp.addEventListener('change',function(){uploadFiles(_inp.files).then(function(){_inp.value='';});});
+_dz.addEventListener('dragover',function(e){e.preventDefault();_dz.classList.add('drag-over');});
+_dz.addEventListener('dragleave',function(e){if(!_dz.contains(e.relatedTarget))_dz.classList.remove('drag-over');});
+_dz.addEventListener('drop',function(e){e.preventDefault();_dz.classList.remove('drag-over');uploadFiles(e.dataTransfer.files);});
+
+document.getElementById('files-body').addEventListener('click',function(e){
+  var delBtn=e.target.closest('.f-del');
+  if(!delBtn)return;
+  var name=delBtn.dataset.name;
+  if(!confirm('Delete "'+name+'"? This cannot be undone.'))return;
+  fetch('/api/admin/raw-files/'+encodeURIComponent(name),{method:'DELETE'})
+    .then(function(r){return r.json();})
+    .then(function(d){d.ok?(toast('Deleted.'),localStorage.setItem('raw-data-changed',Date.now()),init()):toast('Error: '+d.error);});
+});
+</script>

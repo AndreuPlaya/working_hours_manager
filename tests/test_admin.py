@@ -9,12 +9,14 @@ from working_hours.server import app
 
 @pytest.fixture()
 def client(tmp_path, monkeypatch):
-    import working_hours.server as srv
-    monkeypatch.setattr(srv, "_root", tmp_path)
+    monkeypatch.setitem(app.config, "DATA_ROOT", tmp_path)
     (tmp_path / "input_data").mkdir()
     (tmp_path / "corrections").mkdir()
-    app.config["TESTING"] = True
     with app.test_client() as c:
+        with c.session_transaction() as sess:
+            sess["username"] = "admin"
+            sess["is_admin"] = True
+            sess["emp_id"] = None
         yield c
 
 

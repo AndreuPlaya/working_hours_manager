@@ -1,7 +1,7 @@
 from datetime import date, datetime, timedelta
 
-from working_hours.calculator import compute
-from working_hours.models import ClockEvent
+from working_hours.domain.calculator import compute
+from working_hours.domain.models import ClockEvent
 
 from .conftest import make_event
 

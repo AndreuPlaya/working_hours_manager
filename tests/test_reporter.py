@@ -4,8 +4,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from working_hours.models import DayRecord, Session
-from working_hours.reporter import (
+from working_hours.domain.models import DayRecord, Session
+from working_hours.infrastructure.reporter import (
     _build_rows,
     display,
     format_report,

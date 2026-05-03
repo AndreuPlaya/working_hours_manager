@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from working_hours.models import CorrectionItem
-from working_hours.parser import (
+from working_hours.domain.models import CorrectionItem
+from working_hours.domain.parser import (
     apply_corrections,
     collect_correction_files,
     collect_files,

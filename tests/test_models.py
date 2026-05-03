@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 
-from working_hours.models import ClockEvent, DayRecord, Session
+from working_hours.domain.models import ClockEvent, DayRecord, Session
 
 
 def test_session_duration():

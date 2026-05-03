@@ -1,14 +1,14 @@
 import sys
 
-from .calculator import compute
-from .parser import (
+from .domain.calculator import compute
+from .domain.parser import (
     apply_corrections,
     collect_correction_files,
     collect_raw_files,
     parse_correction_file,
     parse_file,
 )
-from .reporter import display
+from .infrastructure.reporter import display
 
 
 def main() -> None:

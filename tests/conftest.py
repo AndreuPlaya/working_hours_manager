@@ -3,7 +3,7 @@ from datetime import date, datetime, timedelta
 
 import pytest
 
-from working_hours.models import ClockEvent, DayRecord, Session
+from working_hours.domain.models import ClockEvent, DayRecord, Session
 
 
 def make_session(date_str: str, in_time: str, out_time: str) -> Session:

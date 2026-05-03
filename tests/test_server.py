@@ -9,12 +9,14 @@ from working_hours.server import app
 
 @pytest.fixture()
 def client(tmp_path, monkeypatch):
-    import working_hours.server as srv
-    monkeypatch.setattr(srv, "_root", tmp_path)
+    monkeypatch.setitem(app.config, "DATA_ROOT", tmp_path)
     (tmp_path / "input_data").mkdir()
     (tmp_path / "corrections").mkdir()
-    app.config["TESTING"] = True
     with app.test_client() as c:
+        with c.session_transaction() as sess:
+            sess["username"] = "admin"
+            sess["is_admin"] = True
+            sess["emp_id"] = None
         yield c
 
 
@@ -82,19 +84,13 @@ def test_setup_redirects_to_login_when_admin_exists(client, tmp_path):
 
 
 def test_before_request_redirects_to_setup_when_no_admins(tmp_path, monkeypatch):
-    import working_hours.server as srv
-    monkeypatch.setattr(srv, "_root", tmp_path)
+    monkeypatch.setitem(app.config, "DATA_ROOT", tmp_path)
     (tmp_path / "input_data").mkdir()
     (tmp_path / "corrections").mkdir()
-    old = app.config.get("TESTING")
-    app.config["TESTING"] = False
-    try:
-        with app.test_client() as c:
-            r = c.get("/", follow_redirects=False)
-            assert r.status_code == 302
-            assert "/setup" in r.headers["Location"]
-    finally:
-        app.config["TESTING"] = old
+    with app.test_client() as c:
+        r = c.get("/", follow_redirects=False)
+        assert r.status_code == 302
+        assert "/setup" in r.headers["Location"]
 
 
 # ---------------------------------------------------------------------------
@@ -312,19 +308,15 @@ def test_add_writes_correction_file(client, tmp_path):
 
 @pytest.fixture()
 def emp_client(tmp_path, monkeypatch):
-    import working_hours.server as srv
-    monkeypatch.setattr(srv, "_root", tmp_path)
+    monkeypatch.setitem(app.config, "DATA_ROOT", tmp_path)
     (tmp_path / "input_data").mkdir()
     (tmp_path / "corrections").mkdir()
-    old = app.config.get("TESTING")
-    app.config["TESTING"] = False
     with app.test_client() as c:
         with c.session_transaction() as s:
             s["username"] = "alice"
             s["is_admin"] = False
             s["emp_id"] = "1"
         yield c
-    app.config["TESTING"] = old
 
 
 def test_employee_sees_only_own_events(emp_client, tmp_path):
@@ -348,17 +340,13 @@ def test_employee_config_restricts_edits(emp_client):
 
 
 def test_admin_config_unrestricted(tmp_path, monkeypatch):
-    import working_hours.server as srv
-    monkeypatch.setattr(srv, "_root", tmp_path)
-    old = app.config.get("TESTING")
-    app.config["TESTING"] = False
+    monkeypatch.setitem(app.config, "DATA_ROOT", tmp_path)
     with app.test_client() as c:
         with c.session_transaction() as s:
             s["username"] = "admin"
             s["is_admin"] = True
             s["emp_id"] = None
         cfg = c.get("/api/config").get_json()
-    app.config["TESTING"] = old
     assert cfg["restrict_edits"] is False
     assert cfg["is_admin"] is True
 
@@ -428,10 +416,10 @@ import json as _json
 from werkzeug.security import generate_password_hash as _gph, check_password_hash as _cph
 
 
-def _seed_pw(tmp_path, username, password):
+def _seed_pw(tmp_path, username, password, emp_id="1"):
     (tmp_path / "config").mkdir(exist_ok=True)
     (tmp_path / "config" / "settings.json").write_text(_json.dumps({
-        "employees": {"1": {
+        "employees": {emp_id: {
             "alias": "", "full_name": "", "username": username,
             "password_hash": _gph(password), "enabled": True,
         }},
@@ -439,46 +427,63 @@ def _seed_pw(tmp_path, username, password):
     }))
 
 
-def test_change_password_employee_ok(client, tmp_path):
+def _make_client(tmp_path, monkeypatch, username, is_admin=False, emp_id=None):
+    monkeypatch.setitem(app.config, "DATA_ROOT", tmp_path)
+    (tmp_path / "input_data").mkdir(exist_ok=True)
+    (tmp_path / "corrections").mkdir(exist_ok=True)
+    c = app.test_client()
+    with c.session_transaction() as s:
+        s["username"] = username
+        s["is_admin"] = is_admin
+        s["emp_id"] = emp_id
+    return c
+
+
+def test_change_password_employee_ok(tmp_path, monkeypatch):
     _seed_pw(tmp_path, "alice", "old")
-    r = client.put("/api/change-password", json={
-        "username": "alice", "current_password": "old", "new_password": "new123",
+    c = _make_client(tmp_path, monkeypatch, "alice", emp_id="1")
+    r = c.put("/api/change-password", json={
+        "current_password": "old", "new_password": "new123",
     })
     assert r.get_json()["ok"] is True
     settings = _json.loads((tmp_path / "config" / "settings.json").read_text())
     assert _cph(settings["employees"]["1"]["password_hash"], "new123")
 
 
-def test_change_password_wrong_current(client, tmp_path):
+def test_change_password_wrong_current(tmp_path, monkeypatch):
     _seed_pw(tmp_path, "alice", "correct")
-    r = client.put("/api/change-password", json={
-        "username": "alice", "current_password": "wrong", "new_password": "new123",
+    c = _make_client(tmp_path, monkeypatch, "alice", emp_id="1")
+    r = c.put("/api/change-password", json={
+        "current_password": "wrong", "new_password": "new123",
     })
     assert r.status_code == 401
 
 
-def test_change_password_missing_fields(client, tmp_path):
+def test_change_password_missing_fields(tmp_path, monkeypatch):
     _seed_pw(tmp_path, "alice", "pw")
-    r = client.put("/api/change-password", json={"username": "alice", "current_password": "pw"})
+    c = _make_client(tmp_path, monkeypatch, "alice", emp_id="1")
+    r = c.put("/api/change-password", json={"current_password": "pw"})
     assert r.status_code == 400
 
 
-def test_change_password_unknown_user(client, tmp_path):
+def test_change_password_unknown_user(tmp_path, monkeypatch):
     _seed_pw(tmp_path, "alice", "pw")
-    r = client.put("/api/change-password", json={
-        "username": "nobody", "current_password": "pw", "new_password": "new",
+    c = _make_client(tmp_path, monkeypatch, "nobody")
+    r = c.put("/api/change-password", json={
+        "current_password": "pw", "new_password": "new",
     })
     assert r.status_code == 404
 
 
-def test_change_password_admin_ok(client, tmp_path):
+def test_change_password_admin_ok(tmp_path, monkeypatch):
     (tmp_path / "config").mkdir(exist_ok=True)
     (tmp_path / "config" / "settings.json").write_text(_json.dumps({
         "employees": {},
         "admin_users": {"sysadmin": {"password_hash": _gph("old")}},
     }))
-    r = client.put("/api/change-password", json={
-        "username": "sysadmin", "current_password": "old", "new_password": "new123",
+    c = _make_client(tmp_path, monkeypatch, "sysadmin", is_admin=True)
+    r = c.put("/api/change-password", json={
+        "current_password": "old", "new_password": "new123",
     })
     assert r.get_json()["ok"] is True
     settings = _json.loads((tmp_path / "config" / "settings.json").read_text())

@@ -2,9 +2,8 @@
 from __future__ import annotations
 
 from flask import Blueprint, redirect, render_template, request, session, url_for
-from werkzeug.security import check_password_hash
 
-from ..settings import _find_user
+from ...application.user_service import authenticate
 
 auth_bp = Blueprint("auth", __name__)
 
@@ -14,10 +13,8 @@ def login_page():
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
-        user, emp_id, is_admin = _find_user(username)
-        if user and check_password_hash(user.get("password_hash", ""), password):
-            if emp_id is not None and not user.get("enabled", True):
-                return render_template("login.html", error="Account is disabled.")
+        user, emp_id, is_admin = authenticate(username, password)
+        if user is not None:
             session.clear()
             session["username"] = username
             session["is_admin"] = is_admin

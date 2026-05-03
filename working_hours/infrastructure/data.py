@@ -3,20 +3,20 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .parser import apply_corrections, parse_correction_file, parse_file
+from flask import current_app
+
+from ..domain.parser import apply_corrections, parse_correction_file, parse_file
 from .settings import _load_settings
 
 _EDITOR_FILE = "editor-corrections.txt"
 
 
 def _raw_dir() -> Path:
-    from working_hours.server import _root
-    return _root / "input_data"
+    return current_app.config["DATA_ROOT"] / "input_data"
 
 
 def _corrections_dir() -> Path:
-    from working_hours.server import _root
-    return _root / "corrections"
+    return current_app.config["DATA_ROOT"] / "corrections"
 
 
 def _load_events() -> list:

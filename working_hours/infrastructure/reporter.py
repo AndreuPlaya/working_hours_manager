@@ -1,7 +1,7 @@
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 
-from .models import DayRecord
+from ..domain.models import DayRecord
 
 _COL = (19, 10, 10, 12)
 _SEP = "  "

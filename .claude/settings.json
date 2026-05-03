@@ -40,7 +40,9 @@
       "Bash(.venv/bin/pytest tests/test_server.py -q)",
       "Bash(git -C /home/rnukes/Work/working_hours_manager diff working_hours/blueprints/admin_bp.py)",
       "Bash(git -C /home/rnukes/Work/working_hours_manager diff HEAD working_hours/blueprints/admin_bp.py working_hours/parser.py working_hours/static/css/admin.css working_hours/templates/admin.html)",
-      "Bash(git -C /home/rnukes/Work/working_hours_manager status)"
+      "Bash(git -C /home/rnukes/Work/working_hours_manager status)",
+      "Bash(git mv *)",
+      "Bash(git check-ignore *)"
     ]
   }
 }

@@ -112,17 +112,18 @@
 <div class="toast" id="toast"></div>
 
 <script>
-var data={},profiles={},myReports=[],adminViewReports=[],curReportIdx=0,cur=null,sortAsc=true,restrictEdits=false,isAdmin=false,inReportMode=false,_initialLoad=true;
+var data={},profiles={},myReports=[],adminViewReports=[],curReportIdx=0,cur=null,sortAsc=true,restrictEdits=false,isAdmin=false,inReportMode=false,_initialLoad=true,myPending=[];
 function getReports(){return isAdmin?adminViewReports:myReports;}
 var TRASH='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>';
 
 async function load(){
   var first=_initialLoad;_initialLoad=false;
-  var [evR,cfgR,profR,repR]=await Promise.all([fetch('/api/events'),fetch('/api/config'),fetch('/api/profiles'),fetch('/api/my-reports')]);
+  var [evR,cfgR,profR,repR,penR]=await Promise.all([fetch('/api/events'),fetch('/api/config'),fetch('/api/profiles'),fetch('/api/my-reports'),fetch('/api/my-pending')]);
   data=await evR.json();
   var cfg=await cfgR.json();
   profiles=await profR.json();
   myReports=await repR.json();
+  myPending=await penR.json();
   isAdmin=cfg.is_admin;
   restrictEdits=cfg.restrict_edits;
   document.getElementById('hdr-user').textContent=cfg.username||'';
@@ -189,16 +190,52 @@ function renderEvents(){
   var cbHead=document.getElementById('cb-all');
   cbHead.style.display=restrictEdits?'none':'';
   document.getElementById('btn-add').style.display=restrictEdits?'none':'';
+  var curEmpId=p[0];
+  var empPending=myPending.filter(function(item){return String(item.emp_id)===String(curEmpId);});
+  var pendingEditByTs={};
+  var pendingAdds=[];
+  empPending.forEach(function(item){
+    if(item.action==='EDIT'){pendingEditByTs[item.timestamp]=item;}
+    else if(item.action==='ADD'){pendingAdds.push(item);}
+  });
+  var PEND_BADGE='<span style="background:#d97706;color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:3px;margin-left:5px;vertical-align:middle">pending</span>';
+  function pendingCell(originalVal,newVal){
+    return '<span style="text-decoration:line-through;color:#9ca3af">'+escH(originalVal)+'</span>'+
+           ' <span style="color:#d97706;font-weight:600">'+escH(newVal)+'</span>'+PEND_BADGE;
+  }
   tbody.innerHTML=rows.map(function(s,i){
     var inClass=restrictEdits?'':'editable';
     var outClass='editable'+(s.clock_out?'':' inc-cell');
     var cbCell=restrictEdits?'<td></td>':'<td><input type="checkbox" class="rcb" data-i="'+i+'" onchange="onCheck()"></td>';
     var delCell=restrictEdits?'<td></td>':'<td><button class="btn-icon" data-del="'+i+'" title="Delete session">'+TRASH+'</button></td>';
-    return '<tr id="row'+i+'">'+cbCell+
+    var inVal=s.clock_in.split(' ')[1];
+    var outVal=s.clock_out?s.clock_out.split(' ')[1]:'?';
+    var inPend=pendingEditByTs[s.clock_in];
+    var outPend=s.clock_out?pendingEditByTs[s.clock_out]:null;
+    var addPend=!s.clock_out?pendingAdds.find(function(a){return a.timestamp.split(' ')[0]===s.clock_in.split(' ')[0];}):null;
+    var rowStyle=inPend||outPend||addPend?'background:#fffbeb':'';
+    var inDisplay=inPend?pendingCell(inVal,inPend.new_timestamp.split(' ')[1]):escH(inVal);
+    var outDisplay=outPend?pendingCell(outVal,outPend.new_timestamp.split(' ')[1])
+                  :addPend?'<span style="color:#d97706;font-weight:600">'+escH(addPend.timestamp.split(' ')[1])+'</span>'+PEND_BADGE
+                  :escH(outVal);
+    return '<tr id="row'+i+'"'+(rowStyle?' style="'+rowStyle+'"':'')+'>'+cbCell+
       '<td>'+s.date+'</td>'+
-      '<td class="'+inClass+'" data-i="'+i+'" data-f="in">'+s.clock_in.split(' ')[1]+'</td>'+
-      '<td class="'+outClass+'" data-i="'+i+'" data-f="out">'+(s.clock_out?s.clock_out.split(' ')[1]:'?')+'</td>'+
+      '<td class="'+inClass+'" data-i="'+i+'" data-f="in">'+inDisplay+'</td>'+
+      '<td class="'+outClass+'" data-i="'+i+'" data-f="out">'+outDisplay+'</td>'+
       '<td>'+(s.duration||'')+'</td>'+delCell+'</tr>';
+  }).join('')+pendingAdds.filter(function(item){
+    return !rows.some(function(s){return !s.clock_out&&item.timestamp.split(' ')[0]===s.clock_in.split(' ')[0];});
+  }).map(function(item){
+    var dt=item.timestamp.split(' ');
+    var dateStr=dt[0]?dt[0]+' ('+new Date(dt[0]+'T00:00:00').toLocaleDateString('en',{weekday:'short'})+')':'';
+    return '<tr style="background:#fffbeb">'+
+      '<td></td>'+
+      '<td style="color:#92400e">'+escH(dateStr)+'</td>'+
+      '<td style="color:#92400e"><span style="color:#a0aec0">—</span></td>'+
+      '<td style="color:#d97706;font-weight:600">'+escH(dt[1]||'')+PEND_BADGE+'</td>'+
+      '<td style="color:#92400e;font-size:12px">new session pending approval</td>'+
+      '<td></td>'+
+    '</tr>';
   }).join('');
   document.getElementById('cb-all').checked=false;
   document.getElementById('btn-del-sel').style.display='none';
@@ -229,13 +266,14 @@ function startEdit(td){
     var newTs=baseDate+' '+input.value;
     if(newTs===curVal)return;
     var p=cur.split('|');
+    var req;
     if(field==='in')
-      post('/api/edit',{emp_id:p[0],name:p[1],dept:p[2],old_timestamp:s.clock_in,new_timestamp:newTs}).then(load);
+      req=post('/api/edit',{emp_id:p[0],name:p[1],dept:p[2],old_timestamp:s.clock_in,new_timestamp:newTs});
     else if(s.clock_out)
-      post('/api/edit',{emp_id:p[0],name:p[1],dept:p[2],old_timestamp:s.clock_out,new_timestamp:newTs}).then(load);
+      req=post('/api/edit',{emp_id:p[0],name:p[1],dept:p[2],old_timestamp:s.clock_out,new_timestamp:newTs});
     else
-      post('/api/add',{emp_id:p[0],name:p[1],dept:p[2],timestamp:newTs}).then(load);
-    toast('Saved.');
+      req=post('/api/add',{emp_id:p[0],name:p[1],dept:p[2],timestamp:newTs});
+    req.then(function(r){return r.json();}).then(function(d){toast(d.pending?'Submitted for approval.':'Saved.');load();});
   }
   input.addEventListener('blur',function(){finish(true);});
   input.addEventListener('keydown',function(e){
@@ -283,9 +321,10 @@ async function saveModal(){
   var outVal=document.getElementById('modal-out').value;
   if(!inVal){toast('Clock In is required.');return;}
   var p=cur.split('|');
-  await post('/api/add',{emp_id:p[0],name:p[1],dept:p[2],timestamp:inVal.replace('T',' ')});
-  if(outVal)await post('/api/add',{emp_id:p[0],name:p[1],dept:p[2],timestamp:outVal.replace('T',' ')});
-  toast('Session added.');closeModal();await load();
+  var r1=await post('/api/add',{emp_id:p[0],name:p[1],dept:p[2],timestamp:inVal.replace('T',' ')});
+  var d1=await r1.json();var pending=d1.pending;
+  if(outVal){var r2=await post('/api/add',{emp_id:p[0],name:p[1],dept:p[2],timestamp:outVal.replace('T',' ')});var d2=await r2.json();pending=pending||d2.pending;}
+  toast(pending?'Submitted for approval.':'Session added.');closeModal();await load();
 }
 async function viewReports(){
   var btn=document.getElementById('btn-to-report');
@@ -359,6 +398,7 @@ async function submitPwChange(){
   if(d.ok){closePwModal();toast('Password changed.');}
   else err.textContent=d.error||'Error.';
 }
+function escH(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function post(url,body){return fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});}
 function toast(msg){var el=document.getElementById('toast');el.textContent=msg;el.classList.add('show');setTimeout(function(){el.classList.remove('show');},2500);}
 window.addEventListener('storage',function(e){if(e.key==='raw-data-changed')load();});

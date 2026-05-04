@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Working Hours — Admin</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
-<script>var empData=[], admData=[], filesData=[], filesSortKey='name', filesSortAsc=true;</script>
+<script>var empData=[], admData=[], filesData=[], filesSortKey='name', filesSortAsc=true, pendingData=[];</script>
 </head>
 <body>
 <header>
@@ -31,25 +31,31 @@
       <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
       Data Files
     </button>
+    <button class="tab-btn" id="tab-btn-pending" onclick="showTab('pending',this)">
+      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      Pending <span id="pending-badge" style="display:none;background:#e53e3e;color:#fff;border-radius:9px;padding:1px 6px;font-size:11px;margin-left:4px;vertical-align:middle"></span>
+    </button>
   </div>
 
   {% include 'admin/_employees.html' %}
   {% include 'admin/_admins.html' %}
   {% include 'admin/_datafiles.html' %}
+  {% include 'admin/_pending.html' %}
 </div>
 <div class="toast" id="toast"></div>
 
 <script>
 async function init(){
-  var [er,ar,fr]=await Promise.all([fetch('/api/admin/employees'),fetch('/api/admin/admins'),fetch('/api/admin/raw-files')]);
-  empData=await er.json(); admData=await ar.json(); filesData=await fr.json();
-  renderEmployees(); renderAdmins(); renderDataFiles();
+  var [er,ar,fr,pr]=await Promise.all([fetch('/api/admin/employees'),fetch('/api/admin/admins'),fetch('/api/admin/raw-files'),fetch('/api/admin/pending')]);
+  empData=await er.json(); admData=await ar.json(); filesData=await fr.json(); pendingData=await pr.json();
+  renderEmployees(); renderAdmins(); renderDataFiles(); renderPending();
 }
 
 function showTab(name,btn){
   document.getElementById('tab-employees').hidden=(name!=='employees');
   document.getElementById('tab-admins').hidden=(name!=='admins');
   document.getElementById('tab-datafiles').hidden=(name!=='datafiles');
+  document.getElementById('tab-pending').hidden=(name!=='pending');
   document.querySelectorAll('.tab-btn').forEach(function(b){b.classList.remove('active');});
   btn.classList.add('active');
 }

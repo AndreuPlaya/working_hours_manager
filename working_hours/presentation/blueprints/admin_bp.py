@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from flask import Blueprint, jsonify, render_template, request, session
 
-from ...application import file_service, report_service, user_service
+from ...application import correction_service, file_service, report_service, user_service
 from ..auth import admin_required
 
 admin_bp = Blueprint("admin", __name__)
@@ -112,4 +112,43 @@ def admin_delete_raw_file(filename: str):
     if not ok:
         status = 400 if error == "Invalid file." else 404
         return jsonify(ok=False, error=error), status
+    return jsonify(ok=True)
+
+
+# ---------------------------------------------------------------------------
+# Pending corrections
+# ---------------------------------------------------------------------------
+
+@admin_bp.route("/api/admin/pending", methods=["GET"])
+@admin_required
+def admin_list_pending():
+    return jsonify(correction_service.get_pending())
+
+
+@admin_bp.route("/api/admin/pending/<item_id>/preview", methods=["GET"])
+@admin_required
+def admin_preview_pending(item_id: str):
+    items = correction_service.get_pending()
+    item = next((x for x in items if x["id"] == item_id), None)
+    if item is None:
+        return jsonify(ok=False, error="Pending item not found."), 404
+    preview = report_service.get_pending_preview(item)
+    if preview is None:
+        return jsonify(ok=False, error="Could not compute preview."), 400
+    return jsonify(ok=True, **preview)
+
+
+@admin_bp.route("/api/admin/pending/<item_id>/approve", methods=["POST"])
+@admin_required
+def admin_approve_pending(item_id: str):
+    if not correction_service.approve_pending(item_id):
+        return jsonify(ok=False, error="Pending item not found."), 404
+    return jsonify(ok=True)
+
+
+@admin_bp.route("/api/admin/pending/<item_id>/reject", methods=["POST"])
+@admin_required
+def admin_reject_pending(item_id: str):
+    if not correction_service.reject_pending(item_id):
+        return jsonify(ok=False, error="Pending item not found."), 404
     return jsonify(ok=True)

@@ -1,0 +1,161 @@
+<div id="tab-pending" hidden>
+  <div class="section-title">Pending Approvals</div>
+  <div class="section-sub">Employee-submitted clock corrections waiting for your review. Approve to apply, or reject to discard.</div>
+  <div style="overflow-x:auto">
+  <table>
+    <thead><tr>
+      <th>Employee</th><th>Action</th><th>From</th><th>To</th>
+      <th>Submitted by</th><th>Submitted at</th><th></th>
+    </tr></thead>
+    <tbody id="pending-body"></tbody>
+  </table>
+  </div>
+</div>
+
+<script>
+var _actionLabel={'ADD':'Add','EDIT':'Edit'};
+var _actionColor={'ADD':'#276749','EDIT':'#744210'};
+var _actionBg={'ADD':'#c6f6d5','EDIT':'#fefcbf'};
+
+var _previewCache={};
+var _previewOpen={};
+
+function renderPending(){
+  var tbody=document.getElementById('pending-body');
+  var badge=document.getElementById('pending-badge');
+  if(pendingData.length){
+    badge.textContent=pendingData.length;
+    badge.style.display='';
+  } else {
+    badge.style.display='none';
+  }
+  _previewCache={};
+  _previewOpen={};
+  if(!pendingData.length){
+    tbody.innerHTML='<tr><td colspan="7" class="empty-cell">No corrections pending approval.</td></tr>';
+    return;
+  }
+  var html=pendingData.map(function(item){
+    var label=_actionLabel[item.action]||item.action;
+    var color=_actionColor[item.action]||'#2d3748';
+    var bg=_actionBg[item.action]||'#e2e8f0';
+    var fromCell,toCell;
+    if(item.action==='ADD'){
+      fromCell='<span style="color:#a0aec0">—</span>';
+      toCell=escH(item.timestamp);
+    } else {
+      fromCell=escH(item.timestamp);
+      toCell=item.new_timestamp?escH(item.new_timestamp):'<span style="color:#a0aec0">—</span>';
+    }
+    return '<tr id="prow-'+escA(item.id)+'">'+
+      '<td>'+escH(item.name)+' <code style="color:#64748b">'+escH(item.emp_id)+'</code></td>'+
+      '<td><span style="background:'+bg+';color:'+color+';padding:2px 8px;border-radius:4px;font-size:12px;font-weight:600">'+escH(label)+'</span></td>'+
+      '<td style="white-space:nowrap">'+fromCell+'</td>'+
+      '<td style="white-space:nowrap">'+toCell+'</td>'+
+      '<td style="color:#64748b">'+escH(item.submitted_by)+'</td>'+
+      '<td style="color:#64748b;white-space:nowrap">'+escH(item.submitted_at)+'</td>'+
+      '<td style="white-space:nowrap">'+
+        '<button class="btn btn-secondary p-details" data-id="'+escA(item.id)+'" style="margin-right:4px">Details</button>'+
+        '<button class="btn btn-primary p-approve" data-id="'+escA(item.id)+'" style="margin-right:4px">Approve</button>'+
+        '<button class="btn btn-secondary p-reject" data-id="'+escA(item.id)+'" style="color:#c53030">Reject</button>'+
+      '</td>'+
+    '</tr>'+
+    '<tr id="preview-'+escA(item.id)+'" style="display:none;background:#f7fafc">'+
+      '<td colspan="7" style="padding:8px 20px 10px;border-top:none">'+
+        '<div id="preview-content-'+escA(item.id)+'"></div>'+
+      '</td>'+
+    '</tr>';
+  }).join('');
+  tbody.innerHTML=html;
+}
+
+function _sessionBadges(rows){
+  var sessions=rows.filter(function(r){return r.affected&&!r.is_subtotal;});
+  if(!sessions.length){
+    return '<span style="color:#a0aec0;font-size:12px;font-style:italic">no record</span>';
+  }
+  return sessions.map(function(r){
+    var isIncomplete=r.clock_out==='?';
+    var cout=isIncomplete?'<span style="color:#d69e2e">?</span>':escH(r.clock_out);
+    var dur=isIncomplete?'':'<span style="color:#718096;font-size:11px;margin-left:6px">'+escH(r.duration)+'</span>';
+    return '<span style="display:inline-flex;align-items:center;background:#edf2f7;border-radius:6px;padding:3px 10px;font-size:13px;font-family:monospace;white-space:nowrap">'+
+      escH(r.clock_in)+'<span style="color:#a0aec0;margin:0 4px">→</span>'+cout+dur+
+    '</span>';
+  }).join(' ');
+}
+
+function _renderPreviewContent(id,d){
+  var el=document.getElementById('preview-content-'+id);
+  if(!el) return;
+  el.innerHTML=
+    '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:12px 28px">'+
+      '<div style="display:flex;align-items:center;gap:8px">'+
+        '<span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#718096;min-width:36px">Before</span>'+
+        _sessionBadges(d.before.rows)+
+      '</div>'+
+      '<div style="display:flex;align-items:center;gap:8px">'+
+        '<span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#2b6cb0;min-width:36px">After</span>'+
+        _sessionBadges(d.after.rows)+
+      '</div>'+
+    '</div>';
+}
+
+function _togglePreview(id){
+  var row=document.getElementById('preview-'+id);
+  var btn=document.querySelector('.p-details[data-id="'+id+'"]');
+  if(!row) return;
+  if(_previewOpen[id]){
+    row.style.display='none';
+    _previewOpen[id]=false;
+    if(btn) btn.textContent='Details';
+    return;
+  }
+  row.style.display='';
+  _previewOpen[id]=true;
+  if(btn) btn.textContent='Hide';
+  if(_previewCache[id]){
+    _renderPreviewContent(id,_previewCache[id]);
+    return;
+  }
+  var el=document.getElementById('preview-content-'+id);
+  if(el) el.innerHTML='<span style="color:#718096;font-size:13px">Loading…</span>';
+  fetch('/api/admin/pending/'+encodeURIComponent(id)+'/preview')
+    .then(function(r){return r.json();})
+    .then(function(d){
+      if(!d.ok){
+        if(el) el.innerHTML='<span style="color:#c53030;font-size:13px">'+escH(d.error||'Could not load preview.')+'</span>';
+        return;
+      }
+      _previewCache[id]=d;
+      _renderPreviewContent(id,d);
+    })
+    .catch(function(){
+      if(el) el.innerHTML='<span style="color:#c53030;font-size:13px">Failed to load preview.</span>';
+    });
+}
+
+document.addEventListener('click',function(e){
+  var detailsBtn=e.target.closest('.p-details');
+  var approveBtn=e.target.closest('.p-approve');
+  var rejectBtn=e.target.closest('.p-reject');
+  if(detailsBtn){
+    _togglePreview(detailsBtn.dataset.id);
+  } else if(approveBtn){
+    var id=approveBtn.dataset.id;
+    approveBtn.disabled=true;
+    postJSON('/api/admin/pending/'+encodeURIComponent(id)+'/approve',{})
+      .then(function(d){
+        if(d.ok){toast('Correction approved.');}else{toast('Error: '+(d.error||'Unknown error'));}
+        init();
+      });
+  } else if(rejectBtn){
+    var id=rejectBtn.dataset.id;
+    rejectBtn.disabled=true;
+    postJSON('/api/admin/pending/'+encodeURIComponent(id)+'/reject',{})
+      .then(function(d){
+        if(d.ok){toast('Correction rejected.');}else{toast('Error: '+(d.error||'Unknown error'));}
+        init();
+      });
+  }
+});
+</script>

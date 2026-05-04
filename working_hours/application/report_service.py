@@ -2,11 +2,12 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from ..domain.calculator import compute
+from ..domain.models import ClockEvent
 from ..infrastructure.data import _apply_name_overrides, _load_events
-from ..infrastructure.reporter import _build_rows, fmt_td
+from ..infrastructure.reporter import _build_rows, fmt_td, fmt_time
 from ..infrastructure.settings import _load_settings
 
 
@@ -148,3 +149,111 @@ def get_employee_report_urls(emp_id: str) -> list[dict]:
             stem = f"{year}-{emp_id}-{username}"
             result.append({"stem": stem, "year": year, "url": f"/reports/{stem}"})
     return result
+
+
+def get_pending_preview(item: dict) -> dict | None:
+    """Compute before/after month records for a pending correction item.
+
+    Returns a dict with before/after day rows for the affected employee's month,
+    or None if the item is malformed.
+    """
+    try:
+        affected_ts = datetime.strptime(item["timestamp"], "%Y-%m-%d %H:%M:%S")
+    except (ValueError, KeyError):
+        return None
+
+    emp_id = str(item["emp_id"])
+    affected_date = affected_ts.date()
+    affected_year = affected_ts.year
+    affected_month = affected_ts.month
+
+    all_events = _load_events()
+    emp_events = [e for e in all_events if str(e.emp_id) == emp_id]
+
+    # "after" events: apply the pending correction on top of current state
+    after_events = list(emp_events)
+    if item["action"] == "ADD":
+        after_events.append(ClockEvent(emp_id, item["name"], item["dept"], affected_ts))
+    elif item["action"] == "EDIT":
+        try:
+            new_ts = datetime.strptime(item["new_timestamp"], "%Y-%m-%d %H:%M:%S")
+        except (ValueError, TypeError, KeyError):
+            return None
+        after_events = [
+            ClockEvent(e.emp_id, e.name, e.dept, new_ts)
+            if str(e.emp_id) == emp_id and e.timestamp == affected_ts
+            else e
+            for e in after_events
+        ]
+
+    def _month_events(events: list, year: int, month: int) -> list:
+        return [e for e in events if e.timestamp.year == year and e.timestamp.month == month]
+
+    def _build_preview_rows(month_events: list, highlight_dates: set) -> tuple[list[dict], str]:
+        if not month_events:
+            return [], "0h 00m"
+        data = compute(month_events)
+        _, info = next(iter(data.items()))
+        days = info["days"]
+        rows_out: list[dict] = []
+        total = timedelta()
+        for d in sorted(days):
+            rec = days[d]
+            total += rec.total
+            label = f"{d}  {d.strftime('%a')}"
+            is_aff = d in highlight_dates
+            first = True
+            for s in rec.sessions:
+                rows_out.append({
+                    "date_label": label if first else "",
+                    "clock_in": fmt_time(s.clock_in),
+                    "clock_out": fmt_time(s.clock_out),
+                    "duration": fmt_td(s.duration),
+                    "is_subtotal": False,
+                    "affected": is_aff,
+                })
+                first = False
+            if rec.incomplete:
+                rows_out.append({
+                    "date_label": label if first else "",
+                    "clock_in": fmt_time(rec.dangling),
+                    "clock_out": "?",
+                    "duration": "incomplete",
+                    "is_subtotal": False,
+                    "affected": is_aff,
+                })
+            if len(rec.sessions) > 1:
+                rows_out.append({
+                    "date_label": "",
+                    "clock_in": "",
+                    "clock_out": "day total",
+                    "duration": fmt_td(rec.total),
+                    "is_subtotal": True,
+                    "affected": is_aff,
+                })
+        return rows_out, fmt_td(total)
+
+    before_highlight = {affected_date}
+    after_highlight = {affected_date}
+    if item["action"] == "EDIT" and item.get("new_timestamp"):
+        try:
+            new_ts = datetime.strptime(item["new_timestamp"], "%Y-%m-%d %H:%M:%S")
+            after_highlight.add(new_ts.date())
+        except ValueError:
+            pass
+
+    before_rows, before_total = _build_preview_rows(
+        _month_events(emp_events, affected_year, affected_month), before_highlight
+    )
+    after_rows, after_total = _build_preview_rows(
+        _month_events(after_events, affected_year, affected_month), after_highlight
+    )
+
+    return {
+        "employee": item["name"],
+        "emp_id": emp_id,
+        "month_label": date(affected_year, affected_month, 1).strftime("%B %Y"),
+        "affected_date": affected_date.isoformat(),
+        "before": {"rows": before_rows, "month_total": before_total},
+        "after": {"rows": after_rows, "month_total": after_total},
+    }

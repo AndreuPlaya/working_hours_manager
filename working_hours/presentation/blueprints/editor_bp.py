@@ -120,6 +120,17 @@ def get_events():
     return jsonify(report_service.get_events_data(emp_id, is_admin))
 
 
+@editor_bp.route("/api/my-pending")
+@login_required
+def get_my_pending():
+    emp_id = str(session.get("emp_id", ""))
+    is_admin = session.get("is_admin", False)
+    pending = correction_service.get_pending()
+    if not is_admin and emp_id:
+        pending = [p for p in pending if str(p["emp_id"]) == emp_id]
+    return jsonify(pending)
+
+
 @editor_bp.route("/api/add", methods=["POST"])
 @login_required
 def add_event():
@@ -127,8 +138,14 @@ def add_event():
     err = _check_emp_ownership(d.get("emp_id", ""))
     if err:
         return err
-    correction_service.add_correction(d["emp_id"], d["name"], d["dept"], d["timestamp"])
-    return jsonify(ok=True)
+    if session.get("is_admin"):
+        correction_service.add_correction(d["emp_id"], d["name"], d["dept"], d["timestamp"])
+        return jsonify(ok=True)
+    correction_service.queue_correction(
+        "ADD", d["emp_id"], d["name"], d["dept"],
+        d["timestamp"], None, session.get("username", ""),
+    )
+    return jsonify(ok=True, pending=True)
 
 
 @editor_bp.route("/api/delete", methods=["POST"])
@@ -149,10 +166,16 @@ def edit_event():
     err = _check_emp_ownership(d.get("emp_id", ""))
     if err:
         return err
-    correction_service.edit_correction(
-        d["emp_id"], d["name"], d["dept"], d["old_timestamp"], d["new_timestamp"]
+    if session.get("is_admin"):
+        correction_service.edit_correction(
+            d["emp_id"], d["name"], d["dept"], d["old_timestamp"], d["new_timestamp"]
+        )
+        return jsonify(ok=True)
+    correction_service.queue_correction(
+        "EDIT", d["emp_id"], d["name"], d["dept"],
+        d["old_timestamp"], d["new_timestamp"], session.get("username", ""),
     )
-    return jsonify(ok=True)
+    return jsonify(ok=True, pending=True)
 
 
 @editor_bp.route("/api/bulk-delete", methods=["POST"])

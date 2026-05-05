@@ -44,7 +44,18 @@
       "Bash(git mv *)",
       "Bash(git check-ignore *)",
       "Bash(python -c \"from working_hours.application import report_service; print\\('OK'\\)\")",
-      "Bash(python -c \"from working_hours.presentation.blueprints.admin_bp import admin_bp; print\\('OK'\\)\")"
+      "Bash(python -c \"from working_hours.presentation.blueprints.admin_bp import admin_bp; print\\('OK'\\)\")",
+      "Bash(git add *)",
+      "Bash(git rm *)",
+      "Bash(pnpm install *)",
+      "Bash(npm --version)",
+      "Bash(npm install *)",
+      "Bash(pnpm --version)",
+      "Bash(git -C /home/rnukes/Work/working_hours_manager ls-files --others --exclude-standard)",
+      "Bash(git -C /home/rnukes/Work/working_hours_manager ls-files --deleted)",
+      "Bash(git -C /home/rnukes/Work/working_hours_manager diff --name-status HEAD~5..HEAD -- .)",
+      "Bash(git -C /home/rnukes/Work/working_hours_manager status --short packages/server/data/ docs/ packages/server/coverage/)",
+      "Bash(git -C /home/rnukes/Work/working_hours_manager status --short packages/server/data/)"
     ]
   }
 }

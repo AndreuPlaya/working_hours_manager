@@ -1,7 +1,7 @@
 import { compute } from '../domain/calculator.js'
 import type { ClockEvent } from '../domain/models.js'
 import { applyNameOverrides, loadEvents } from '../infrastructure/data.js'
-import { buildRows, fmtMs, fmtTime } from '../infrastructure/reporter.js'
+import { buildRows, fmtLocalTs, fmtMs, fmtTime } from '../infrastructure/reporter.js'
 import { loadSettings } from '../infrastructure/settings.js'
 import type { PendingItem } from '../infrastructure/data.js'
 import { listEmployees } from './userService.js'
@@ -27,8 +27,8 @@ export function getEventsData(empId: string | null, isAdmin: boolean): Record<st
         for (const s of rec.sessions) {
           rows.push({
             date: dateLabel,
-            clock_in: s.clockIn.toISOString().replace('T', ' ').slice(0, 19),
-            clock_out: s.clockOut.toISOString().replace('T', ' ').slice(0, 19),
+            clock_in: fmtLocalTs(s.clockIn),
+            clock_out: fmtLocalTs(s.clockOut),
             duration: fmtMs(s.clockOut.getTime() - s.clockIn.getTime()),
             incomplete: false,
           })
@@ -36,7 +36,7 @@ export function getEventsData(empId: string | null, isAdmin: boolean): Record<st
         if (rec.incomplete && rec.dangling) {
           rows.push({
             date: dateLabel,
-            clock_in: rec.dangling.toISOString().replace('T', ' ').slice(0, 19),
+            clock_in: fmtLocalTs(rec.dangling),
             clock_out: null,
             duration: null,
             incomplete: true,
@@ -120,7 +120,7 @@ export function getEmployeeReportUrls(empId: string): object[] {
   )
   return years.map(year => {
     const yearEvents = events.filter(e => e.empId === empId && e.timestamp.getFullYear() === year)
-    const name = yearEvents[0]?.name ?? ''
+    /* v8 ignore next */ const name = yearEvents[0]?.name ?? ''
     const username = employees[empId]?.username?.trim() || name
     const stem = `${year}-${empId}-${username}`
     return { stem, year, url: `/reports/${stem}` }

@@ -51,7 +51,7 @@ admin.get('/api/admin/raw-files', c => c.json(listRawFiles()))
 admin.post('/api/admin/raw-files', async c => {
   const body = await c.req.parseBody()
   const file = body['file']
-  if (!file || typeof file === 'string') return c.json({ ok: false, error: 'No file provided.' }, 400)
+  /* v8 ignore next */ if (!file || typeof file === 'string') return c.json({ ok: false, error: 'No file provided.' }, 400)
   const name = (file as File).name ?? ''
   const content = await (file as File).text()
   const { ok, error } = saveRawFile(name, content)

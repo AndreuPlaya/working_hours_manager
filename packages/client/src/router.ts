@@ -21,15 +21,11 @@ router.beforeEach(async to => {
     if (to.meta.adminOnly && !cfg.is_admin) return '/'
     return true
   } catch (e) {
-    if (e instanceof ApiError) {
-      if (e.status === 403) {
-        // Check if setup is needed
-        try {
-          const s = await api.auth.setupStatus()
-          if (s.needs_setup) return '/setup'
-        } catch { /* ignore */ }
-      }
-      return '/login'
+    if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
+      try {
+        const s = await api.auth.setupStatus()
+        if (s.needs_setup) return '/setup'
+      } catch { /* ignore */ }
     }
     return '/login'
   }

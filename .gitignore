@@ -4,6 +4,7 @@ data/
 # Node
 node_modules/
 packages/*/dist/
+packages/*/coverage/
 
 # Claude Code — local-only settings and memory (project settings.json is tracked)
 /CLAUDE.md

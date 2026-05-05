@@ -8,8 +8,20 @@ export function fmtMs(ms: number): string {
 }
 
 export function fmtTime(d: Date): string {
-  return d.toISOString().slice(11, 19)
+  const h = String(d.getHours()).padStart(2, '0')
+  const m = String(d.getMinutes()).padStart(2, '0')
+  const s = String(d.getSeconds()).padStart(2, '0')
+  return `${h}:${m}:${s}`
 }
+
+function fmtLocalTs(d: Date): string {
+  const y = d.getFullYear()
+  const mo = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${mo}-${day} ${fmtTime(d)}`
+}
+
+export { fmtLocalTs }
 
 export interface ReportRow {
   dateLabel: string

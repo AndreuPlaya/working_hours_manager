@@ -101,6 +101,13 @@ describe('queueCorrection', () => {
     expect(item.action).toBe('EDIT')
     expect(item.new_timestamp).toBe('2024-01-15 09:05:00')
   })
+
+  it('adds a pending item with null new_timestamp for DEL action', () => {
+    queueCorrection('DEL', '1', 'Alice', 'Admin', '2024-01-15 09:00:00', null, 'alice')
+    const item: PendingItem = mockAddPending.mock.calls[0][0]
+    expect(item.action).toBe('DEL')
+    expect(item.new_timestamp).toBeNull()
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -137,6 +144,13 @@ describe('approvePending', () => {
     mockRemovePending.mockReturnValue(item)
     expect(approvePending('y')).toBe(true)
     expect(mockAppend).toHaveBeenCalledWith('EDIT\t1\tAlice\tAdmin\t2024-01-15 09:00:00\t2024-01-15 09:05:00\t1')
+  })
+
+  it('appends a DEL correction and returns true for DEL action', () => {
+    const item: PendingItem = { id: 'w', action: 'DEL', emp_id: '1', name: 'Alice', dept: 'Admin', timestamp: '2024-01-15 09:00:00', new_timestamp: null, submitted_at: 's', submitted_by: 'u' }
+    mockRemovePending.mockReturnValue(item)
+    expect(approvePending('w')).toBe(true)
+    expect(mockAppend).toHaveBeenCalledWith('DEL\t1\tAlice\tAdmin\t2024-01-15 09:00:00\t1')
   })
 })
 

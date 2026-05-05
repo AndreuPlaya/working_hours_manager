@@ -49,7 +49,7 @@ export function appendCorrection(line: string): void {
 
 export interface PendingItem {
   id: string
-  action: 'ADD' | 'EDIT'
+  action: 'ADD' | 'EDIT' | 'DEL'
   emp_id: string
   name: string
   dept: string

@@ -1,9 +1,9 @@
 import { Hono } from 'hono'
 import { serve } from '@hono/node-server'
 import { serveStatic } from '@hono/node-server/serve-static'
-import { readFileSync } from 'fs'
+import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
-import { ensureSecretKey } from './infrastructure/settings.js'
+import { ensureSecretKey, getDataRoot } from './infrastructure/settings.js'
 import authRoutes from './routes/auth.js'
 import editorRoutes from './routes/editor.js'
 import adminRoutes from './routes/admin.js'
@@ -22,7 +22,17 @@ app.route('/', adminRoutes)
 const CLIENT_DIST = process.env.CLIENT_DIST ?? join(process.cwd(), '..', 'client', 'dist')
 
 app.use('/assets/*', serveStatic({ root: CLIENT_DIST }))
-app.use('/favicon.ico', serveStatic({ root: CLIENT_DIST }))
+
+app.get('/favicon.ico', async c => {
+  for (const ext of ['ico', 'png', 'svg', 'jpg', 'jpeg']) {
+    const p = join(getDataRoot(), 'config', `favicon.${ext}`)
+    if (existsSync(p)) {
+      const mime = ext === 'svg' ? 'image/svg+xml' : ext === 'png' ? 'image/png' : ext === 'ico' ? 'image/x-icon' : 'image/jpeg'
+      return new Response(readFileSync(p), { headers: { 'Content-Type': mime, 'Cache-Control': 'public, max-age=3600' } })
+    }
+  }
+  return serveStatic({ root: CLIENT_DIST })(c, async () => {})
+})
 
 // SPA fallback — serve index.html for all non-API routes
 app.get('*', c => {

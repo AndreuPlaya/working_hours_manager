@@ -5,8 +5,8 @@
       <RouterLink v-if="config?.is_admin" to="/admin" class="hdr-icon" title="Admin">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
       </RouterLink>
-      <button class="hdr-icon" title="Change password" @click="showPasswordModal = true">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+      <button v-if="config?.emp_id" class="hdr-icon" title="Profile" @click="showProfileModal = true">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
       </button>
       <button class="hdr-icon" title="Logout" @click="logout">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h6a2 2 0 012 2v1"/></svg>
@@ -31,47 +31,40 @@
           <!-- Toolbar -->
           <div class="toolbar">
             <span class="toolbar-name">{{ selectedName }}</span>
+            <div class="month-nav">
+              <button class="btn btn-secondary nav-btn" @click="prevMonth">←</button>
+              <span class="month-label">{{ monthLabel }}</span>
+              <button class="btn btn-secondary nav-btn" @click="nextMonth">→</button>
+            </div>
             <div class="toolbar-actions">
-              <button class="btn btn-primary" @click="showAddModal = true">+ Add session</button>
-              <button v-if="config?.is_admin && selectedRows.length > 0" class="btn btn-danger" @click="bulkDelete">
-                Delete ({{ selectedRows.length }})
-              </button>
-              <button class="btn btn-secondary" @click="sortAsc = !sortAsc">
-                {{ sortAsc ? '↑ Oldest first' : '↓ Newest first' }}
-              </button>
               <RouterLink v-if="reportUrl" :to="reportUrl" class="btn btn-secondary" target="_blank">
                 View report
               </RouterLink>
             </div>
           </div>
 
-          <!-- Session table -->
-          <SessionTable
-            :rows="sortedRows"
+          <!-- Month view -->
+          <MonthView
+            :rows="currentRows"
             :pending-items="myPending"
-            :is-admin="config?.is_admin ?? false"
-            :selected-rows="selectedRows"
-            @toggle-select="toggleSelect"
-            @select-all="toggleSelectAll"
+            :year="currentYear"
+            :month="currentMonth"
             @edit-cell="onEditCell"
-            @delete-row="onDeleteRow"
+            @edit-cell-replace-pending="onEditCellReplacePending"
+            @add-event="onAddEvent"
           />
         </template>
       </div>
     </div>
 
     <!-- Modals -->
-    <AddSessionModal
-      v-if="showAddModal"
-      :emp-id="selectedEmpId"
-      :name="selectedName"
-      :dept="selectedDept"
-      @close="showAddModal = false"
-      @saved="onAddSaved"
-    />
-    <ChangePasswordModal
-      v-if="showPasswordModal"
-      @close="showPasswordModal = false"
+    <ProfileModal
+      v-if="showProfileModal"
+      :initial-full-name="config?.full_name ?? ''"
+      :initial-email="config?.email ?? ''"
+      :initial-username="config?.username ?? ''"
+      @close="showProfileModal = false"
+      @saved="onProfileSaved"
     />
   </div>
 </template>
@@ -83,9 +76,11 @@ import { api, ApiError } from '../api/client.js'
 import type { Config, EventRow, PendingItem, Profile } from '../api/client.js'
 import { useToast } from '../composables/useToast.js'
 import EmployeeSidebar from '../components/editor/EmployeeSidebar.vue'
-import SessionTable from '../components/editor/SessionTable.vue'
-import AddSessionModal from '../components/editor/AddSessionModal.vue'
-import ChangePasswordModal from '../components/editor/ChangePasswordModal.vue'
+import MonthView from '../components/editor/MonthView.vue'
+import ProfileModal from '../components/editor/ProfileModal.vue'
+import { useAppConfig } from '../composables/useAppConfig.js'
+
+useAppConfig()
 
 const router = useRouter()
 const { toast } = useToast()
@@ -97,10 +92,34 @@ const myReports = ref<{ stem: string; year: number; url: string }[]>([])
 const pending = ref<PendingItem[]>([])
 
 const selectedKey = ref<string | null>(null)
-const sortAsc = ref(false)
-const selectedRows = ref<string[]>([])
-const showAddModal = ref(false)
-const showPasswordModal = ref(false)
+const showProfileModal = ref(false)
+
+const now = new Date()
+const currentYear = ref(now.getFullYear())
+const currentMonth = ref(now.getMonth() + 1)
+
+const monthLabel = computed(() => {
+  return new Date(currentYear.value, currentMonth.value - 1)
+    .toLocaleString('default', { month: 'long', year: 'numeric' })
+})
+
+function prevMonth() {
+  if (currentMonth.value === 1) {
+    currentMonth.value = 12
+    currentYear.value--
+  } else {
+    currentMonth.value--
+  }
+}
+
+function nextMonth() {
+  if (currentMonth.value === 12) {
+    currentMonth.value = 1
+    currentYear.value++
+  } else {
+    currentMonth.value++
+  }
+}
 
 onMounted(async () => {
   const [cfg, profs, evts, reports] = await Promise.all([
@@ -114,7 +133,6 @@ onMounted(async () => {
   events.value = evts
   myReports.value = reports
 
-  // For non-admin, auto-select self
   if (!cfg.is_admin && cfg.emp_id) {
     const k = Object.keys(evts).find(k => k.startsWith(cfg.emp_id + '|'))
     selectedKey.value = k ?? null
@@ -123,25 +141,16 @@ onMounted(async () => {
   pending.value = await api.myPending()
 })
 
-// Parse key: "empId|name|dept"
 function keyParts(k: string) {
   const [empId, name, dept] = k.split('|')
   return { empId, name, dept }
 }
 
 const selectedEmpId = computed(() => selectedKey.value ? keyParts(selectedKey.value).empId : '')
-const selectedName = computed(() => selectedKey.value ? keyParts(selectedKey.value).name : '')
-const selectedDept = computed(() => selectedKey.value ? keyParts(selectedKey.value).dept : '')
+const selectedName  = computed(() => selectedKey.value ? keyParts(selectedKey.value).name  : '')
 
 const currentRows = computed<EventRow[]>(() =>
   selectedKey.value ? (events.value[selectedKey.value] ?? []) : []
-)
-
-const sortedRows = computed(() =>
-  [...currentRows.value].sort((a, b) => {
-    const cmp = a.clock_in.localeCompare(b.clock_in)
-    return sortAsc.value ? cmp : -cmp
-  })
 )
 
 const reportUrl = computed(() => {
@@ -156,25 +165,13 @@ const myPending = computed(() =>
 
 function selectEmployee(key: string) {
   selectedKey.value = key
-  selectedRows.value = []
-}
-
-function toggleSelect(clockIn: string) {
-  const idx = selectedRows.value.indexOf(clockIn)
-  if (idx === -1) selectedRows.value.push(clockIn)
-  else selectedRows.value.splice(idx, 1)
-}
-
-function toggleSelectAll(all: boolean) {
-  selectedRows.value = all ? sortedRows.value.map(r => r.clock_in) : []
 }
 
 async function onEditCell(payload: { oldTimestamp: string; newTimestamp: string }) {
   const { empId, name, dept } = keyParts(selectedKey.value!)
   try {
     const res = await api.edit({ emp_id: empId, name, dept, old_timestamp: payload.oldTimestamp, new_timestamp: payload.newTimestamp })
-    if (res.pending) toast('Submitted for approval.')
-    else toast('Saved.')
+    toast(res.pending ? 'Submitted for approval.' : 'Saved.')
     events.value = await api.events()
     pending.value = await api.myPending()
   } catch (e) {
@@ -182,31 +179,34 @@ async function onEditCell(payload: { oldTimestamp: string; newTimestamp: string 
   }
 }
 
-async function onDeleteRow(timestamp: string) {
-  if (!confirm('Delete this session?')) return
+async function onAddEvent(payload: { timestamp: string }) {
   const { empId, name, dept } = keyParts(selectedKey.value!)
   try {
-    await api.delete({ emp_id: empId, name, dept, timestamp })
+    const res = await api.add({ emp_id: empId, name, dept, timestamp: payload.timestamp })
+    toast(res.pending ? 'Submitted for approval.' : 'Saved.')
     events.value = await api.events()
-    toast('Deleted.')
+    pending.value = await api.myPending()
   } catch (e) {
-    toast(e instanceof ApiError ? e.message : 'Error deleting.')
+    toast(e instanceof ApiError ? e.message : 'Error saving.')
   }
 }
 
-async function bulkDelete() {
-  if (!confirm(`Delete ${selectedRows.value.length} session(s)?`)) return
+async function onEditCellReplacePending(payload: { pendingId: string; oldTimestamp: string; newTimestamp: string }) {
   const { empId, name, dept } = keyParts(selectedKey.value!)
-  await api.bulkDelete(selectedRows.value.map(ts => ({ emp_id: empId, name, dept, timestamp: ts })))
-  selectedRows.value = []
-  events.value = await api.events()
-  toast('Deleted.')
+  try {
+    await api.cancelMyPending(payload.pendingId)
+    const res = await api.edit({ emp_id: empId, name, dept, old_timestamp: payload.oldTimestamp, new_timestamp: payload.newTimestamp })
+    toast(res.pending ? 'Submitted for approval.' : 'Saved.')
+    events.value = await api.events()
+    pending.value = await api.myPending()
+  } catch (e) {
+    toast(e instanceof ApiError ? e.message : 'Error saving.')
+  }
 }
 
-async function onAddSaved() {
-  showAddModal.value = false
-  events.value = await api.events()
-  pending.value = await api.myPending()
+async function onProfileSaved() {
+  showProfileModal.value = false
+  config.value = await api.config()
 }
 
 async function logout() {
@@ -227,10 +227,17 @@ async function logout() {
 .toolbar {
   display: flex; align-items: center; gap: .75rem; padding: .75rem 1rem;
   border-bottom: 1px solid $border; flex-wrap: wrap;
-  .toolbar-name { font-weight: 600; flex: 1; }
-  .toolbar-actions { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
+  .toolbar-name { font-weight: 600; min-width: 8rem; }
+  .toolbar-actions { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; margin-left: auto; }
   a.btn { text-decoration: none; display: inline-flex; align-items: center; }
 }
+
+.month-nav {
+  display: flex; align-items: center; gap: .5rem;
+  .month-label { font-size: .9rem; font-weight: 500; min-width: 130px; text-align: center; }
+}
+
+.nav-btn { padding: .25rem .6rem; font-size: .9rem; }
 
 .empty-state {
   display: flex; align-items: center; justify-content: center;

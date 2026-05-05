@@ -77,6 +77,7 @@ export function createInitialAdmin(username: string, password: string, confirm: 
 export const ERR_MISSING = 'MISSING_FIELDS'
 export const ERR_NOT_FOUND = 'NOT_FOUND'
 export const ERR_WRONG_PW = 'WRONG_PASSWORD'
+export const ERR_USERNAME_TAKEN = 'USERNAME_TAKEN'
 
 export function changePassword(username: string, currentPw: string, newPw: string): string | null {
   if (!currentPw || !newPw) return ERR_MISSING
@@ -152,6 +153,7 @@ export function listEmployees(events: ClockEvent[]): object[] {
         raw_name: known.get(empId),
         alias: emp.alias ?? '',
         full_name: emp.full_name ?? '',
+        email: emp.email ?? '',
         username: emp.username ?? '',
         has_password: Boolean(emp.password_hash),
         enabled: emp.enabled !== false,
@@ -170,9 +172,33 @@ export function updateEmployee(empId: string, data: Record<string, unknown>): st
   }
   if ('alias' in data) emp.alias = (data.alias as string).trim()
   if ('full_name' in data) emp.full_name = (data.full_name as string).trim()
+  if ('email' in data) emp.email = ((data.email as string) ?? '').trim()
   emp.username = newUsername
   if ('enabled' in data) emp.enabled = Boolean(data.enabled)
   if (data.password) emp.password_hash = hashPassword(data.password as string)
+  saveSettings(s)
+  return null
+}
+
+export function updateProfile(
+  username: string,
+  data: { full_name?: string; email?: string; username?: string; current_password?: string; new_password?: string }
+): string | null {
+  const { user, empId } = findUser(username)
+  if (!user || !empId) return ERR_NOT_FOUND
+  const s = loadSettings()
+  const emp = s.employees[empId]
+  const newUsername = (data.username ?? emp.username ?? '').trim()
+  if (newUsername && newUsername !== emp.username) {
+    if (isUsernameTaken(newUsername, s, empId)) return ERR_USERNAME_TAKEN
+  }
+  if (data.current_password && data.new_password) {
+    if (!verifyPassword(data.current_password, emp.password_hash ?? '')) return ERR_WRONG_PW
+    emp.password_hash = hashPassword(data.new_password)
+  }
+  if ('full_name' in data) emp.full_name = (data.full_name ?? '').trim()
+  if ('email' in data) emp.email = (data.email ?? '').trim()
+  emp.username = newUsername || emp.username
   saveSettings(s)
   return null
 }

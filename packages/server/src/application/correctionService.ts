@@ -19,7 +19,7 @@ export function bulkDelete(items: { emp_id: string; name: string; dept: string; 
 }
 
 export function queueCorrection(
-  action: 'ADD' | 'EDIT',
+  action: 'ADD' | 'EDIT' | 'DEL',
   empId: string,
   name: string,
   dept: string,
@@ -52,6 +52,8 @@ export function approvePending(itemId: string): boolean {
     appendCorrection(`ADD\t${item.emp_id}\t${item.name}\t${item.dept}\t${item.timestamp}\t1`)
   } else if (item.action === 'EDIT') {
     appendCorrection(`EDIT\t${item.emp_id}\t${item.name}\t${item.dept}\t${item.timestamp}\t${item.new_timestamp}\t1`)
+  } else if (item.action === 'DEL') {
+    appendCorrection(`DEL\t${item.emp_id}\t${item.name}\t${item.dept}\t${item.timestamp}\t1`)
   }
   return true
 }

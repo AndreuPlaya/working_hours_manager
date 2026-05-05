@@ -3,7 +3,7 @@
     <div v-if="loading" class="muted">Loading…</div>
     <table v-else>
       <thead>
-        <tr><th>ID</th><th>Name (raw)</th><th>Alias</th><th>Full name</th><th>Username</th><th>Password</th><th>Status</th><th></th></tr>
+        <tr><th>ID</th><th>Name (raw)</th><th>Alias</th><th>Full name</th><th>Email</th><th>Username</th><th>Password</th><th>Status</th><th></th></tr>
       </thead>
       <tbody>
         <tr v-for="emp in employees" :key="emp.emp_id">
@@ -11,6 +11,7 @@
           <td>{{ emp.raw_name }}</td>
           <td><input v-model="edits[emp.emp_id].alias" /></td>
           <td><input v-model="edits[emp.emp_id].full_name" /></td>
+          <td><input type="email" v-model="edits[emp.emp_id].email" /></td>
           <td><input v-model="edits[emp.emp_id].username" /></td>
           <td>
             <input v-if="showPw[emp.emp_id]" type="password" v-model="edits[emp.emp_id].password" placeholder="New password" />
@@ -42,14 +43,14 @@ import { useToast } from '../../composables/useToast.js'
 const { toast } = useToast()
 const employees = ref<Employee[]>([])
 const loading = ref(true)
-const edits = reactive<Record<string, { alias: string; full_name: string; username: string; password: string; enabled: boolean }>>({})
+const edits = reactive<Record<string, { alias: string; full_name: string; email: string; username: string; password: string; enabled: boolean }>>({})
 const showPw = reactive<Record<string, boolean>>({})
 
 onMounted(async () => {
   try {
     employees.value = await api.admin.employees()
     for (const emp of employees.value) {
-      edits[emp.emp_id] = { alias: emp.alias, full_name: emp.full_name, username: emp.username, password: '', enabled: emp.enabled }
+      edits[emp.emp_id] = { alias: emp.alias, full_name: emp.full_name, email: emp.email ?? '', username: emp.username, password: '', enabled: emp.enabled }
       showPw[emp.emp_id] = false
     }
   } finally { loading.value = false }
@@ -58,7 +59,7 @@ onMounted(async () => {
 async function save(empId: string) {
   try {
     const d = edits[empId]
-    await api.admin.updateEmployee(empId, { alias: d.alias, full_name: d.full_name, username: d.username, enabled: d.enabled, ...(d.password ? { password: d.password } : {}) })
+    await api.admin.updateEmployee(empId, { alias: d.alias, full_name: d.full_name, email: d.email, username: d.username, enabled: d.enabled, ...(d.password ? { password: d.password } : {}) })
     d.password = ''
     showPw[empId] = false
     toast('Saved.')

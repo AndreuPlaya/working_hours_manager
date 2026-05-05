@@ -19,9 +19,11 @@ import {
   deleteAdmin,
   listEmployees,
   updateEmployee,
+  updateProfile,
   getProfiles,
   ERR_MISSING,
   ERR_NOT_FOUND,
+  ERR_USERNAME_TAKEN,
   ERR_WRONG_PW,
 } from '../../application/userService.js'
 import type { Settings, EmployeeRecord } from '../../infrastructure/settings.js'
@@ -514,6 +516,20 @@ describe('updateEmployee', () => {
     const result = updateEmployee('1', { username: '' })
     expect(result).toBeNull()
   })
+
+  it('saves email when email is included in data', () => {
+    mockLoadSettings.mockReturnValue(makeSettings({ employees: { '1': makeEmp() } }))
+    updateEmployee('1', { email: 'alice@example.com' })
+    const saved = mockSaveSettings.mock.calls[0][0]
+    expect(saved.employees['1'].email).toBe('alice@example.com')
+  })
+
+  it('falls back to empty string when email in data is null', () => {
+    mockLoadSettings.mockReturnValue(makeSettings({ employees: { '1': makeEmp() } }))
+    updateEmployee('1', { email: null as any })
+    const saved = mockSaveSettings.mock.calls[0][0]
+    expect(saved.employees['1'].email).toBe('')
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -549,5 +565,95 @@ describe('getProfiles', () => {
   it('falls back to empty object when employees is null', () => {
     mockLoadSettings.mockReturnValue({ employees: null as any, admin_users: {}, secret_key: '' })
     expect(getProfiles()).toEqual({})
+  })
+})
+
+// ---------------------------------------------------------------------------
+// updateProfile
+// ---------------------------------------------------------------------------
+
+describe('updateProfile', () => {
+  it('returns ERR_NOT_FOUND when user is a pure admin (no empId)', () => {
+    mockFindUser.mockReturnValue({ user: { password_hash: '$2b$mock' }, empId: null, isAdmin: true })
+    expect(updateProfile('admin', { full_name: 'Admin' })).toBe(ERR_NOT_FOUND)
+  })
+
+  it('returns ERR_NOT_FOUND when user does not exist', () => {
+    mockFindUser.mockReturnValue({ user: null, empId: null, isAdmin: false })
+    expect(updateProfile('unknown', {})).toBe(ERR_NOT_FOUND)
+  })
+
+  it('returns ERR_USERNAME_TAKEN when new username is already taken', () => {
+    const emp = makeEmp({ username: 'alice' })
+    mockFindUser.mockReturnValue({ user: emp, empId: '1', isAdmin: false })
+    mockLoadSettings.mockReturnValue(makeSettings({
+      employees: { '1': emp, '2': makeEmp({ username: 'taken' }) },
+    }))
+    expect(updateProfile('alice', { username: 'taken' })).toBe(ERR_USERNAME_TAKEN)
+  })
+
+  it('returns ERR_WRONG_PW when current password is incorrect', () => {
+    const emp = makeEmp({ username: 'alice', password_hash: '$2b$mock' })
+    mockFindUser.mockReturnValue({ user: emp, empId: '1', isAdmin: false })
+    mockLoadSettings.mockReturnValue(makeSettings({ employees: { '1': emp } }))
+    mockBcryptCompare.mockReturnValue(false as unknown as boolean)
+    expect(updateProfile('alice', { current_password: 'wrong', new_password: 'new' })).toBe(ERR_WRONG_PW)
+  })
+
+  it('updates full_name, email, and saves', () => {
+    const emp = makeEmp({ username: 'alice', full_name: 'Old', email: '' })
+    mockFindUser.mockReturnValue({ user: emp, empId: '1', isAdmin: false })
+    mockLoadSettings.mockReturnValue(makeSettings({ employees: { '1': emp } }))
+    const result = updateProfile('alice', { full_name: 'Alice Smith', email: 'alice@example.com' })
+    expect(result).toBeNull()
+    expect(mockSaveSettings).toHaveBeenCalled()
+    const saved = mockSaveSettings.mock.calls[0][0]
+    expect(saved.employees['1'].full_name).toBe('Alice Smith')
+    expect(saved.employees['1'].email).toBe('alice@example.com')
+  })
+
+  it('changes password when current and new passwords are provided', () => {
+    const emp = makeEmp({ username: 'alice', password_hash: '$2b$mock' })
+    mockFindUser.mockReturnValue({ user: emp, empId: '1', isAdmin: false })
+    mockLoadSettings.mockReturnValue(makeSettings({ employees: { '1': emp } }))
+    mockBcryptCompare.mockReturnValue(true as unknown as boolean)
+    updateProfile('alice', { current_password: 'old', new_password: 'newpassword' })
+    const saved = mockSaveSettings.mock.calls[0][0]
+    expect(saved.employees['1'].password_hash).toBe('$2b$hashed')
+  })
+
+  it('falls back to empty string when full_name or email in data are null', () => {
+    const emp = makeEmp({ username: 'alice', full_name: 'Old', email: 'old@x.com' })
+    mockFindUser.mockReturnValue({ user: emp, empId: '1', isAdmin: false })
+    mockLoadSettings.mockReturnValue(makeSettings({ employees: { '1': emp } }))
+    updateProfile('alice', { full_name: null as any, email: null as any })
+    const saved = mockSaveSettings.mock.calls[0][0]
+    expect(saved.employees['1'].full_name).toBe('')
+    expect(saved.employees['1'].email).toBe('')
+  })
+
+  it('falls back to empty hash when emp.password_hash is undefined during password verify', () => {
+    const emp = makeEmp({ username: 'alice', password_hash: undefined as any })
+    mockFindUser.mockReturnValue({ user: emp, empId: '1', isAdmin: false })
+    mockLoadSettings.mockReturnValue(makeSettings({ employees: { '1': emp } }))
+    mockBcryptCompare.mockReturnValue(false as unknown as boolean)
+    expect(updateProfile('alice', { current_password: 'x', new_password: 'y' })).toBe(ERR_WRONG_PW)
+  })
+
+  it('keeps existing username when empty string username is provided', () => {
+    const emp = makeEmp({ username: 'alice' })
+    mockFindUser.mockReturnValue({ user: emp, empId: '1', isAdmin: false })
+    mockLoadSettings.mockReturnValue(makeSettings({ employees: { '1': emp } }))
+    updateProfile('alice', { username: '' })
+    const saved = mockSaveSettings.mock.calls[0][0]
+    expect(saved.employees['1'].username).toBe('alice')
+  })
+
+  it('falls back to empty string when emp.username is null', () => {
+    const emp = makeEmp({ username: null as any })
+    mockFindUser.mockReturnValue({ user: emp, empId: '1', isAdmin: false })
+    mockLoadSettings.mockReturnValue(makeSettings({ employees: { '1': emp } }))
+    const result = updateProfile('alice', {})
+    expect(result).toBeNull()
   })
 })

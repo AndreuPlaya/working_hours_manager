@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
+vi.mock('fs')
 vi.mock('../../application/correctionService.js')
 vi.mock('../../application/fileService.js')
 vi.mock('../../application/reportService.js')
@@ -18,12 +19,18 @@ import {
   updateAdminPassword,
   updateEmployee,
 } from '../../application/userService.js'
-import { ensureSecretKey } from '../../infrastructure/settings.js'
+import { mkdirSync, writeFileSync } from 'fs'
+import { ensureSecretKey, getDataRoot, loadAppConfig, saveAppConfig } from '../../infrastructure/settings.js'
 import { SignJWT } from 'jose'
 import adminRoutes from '../../routes/admin.js'
 import type { PendingItem } from '../../infrastructure/data.js'
 
 const mockEnsureKey = vi.mocked(ensureSecretKey)
+const mockLoadAppConfig = vi.mocked(loadAppConfig)
+const mockSaveAppConfig = vi.mocked(saveAppConfig)
+const mockGetDataRoot = vi.mocked(getDataRoot)
+const mockMkdirSync = vi.mocked(mkdirSync)
+const mockWriteFileSync = vi.mocked(writeFileSync)
 const mockGetEmployeeList = vi.mocked(getEmployeeList)
 const mockUpdateEmployee = vi.mocked(updateEmployee)
 const mockListAdmins = vi.mocked(listAdmins)
@@ -74,6 +81,8 @@ beforeEach(() => {
   mockDeleteAdmin.mockReturnValue(null)
   mockApprovePending.mockReturnValue(true)
   mockRejectPending.mockReturnValue(true)
+  mockLoadAppConfig.mockReturnValue({})
+  mockGetDataRoot.mockReturnValue('/test-data')
 })
 
 // ---------------------------------------------------------------------------
@@ -449,5 +458,91 @@ describe('POST /api/admin/pending/:id/reject', () => {
     })
     expect(res.status).toBe(200)
     expect(mockRejectPending).toHaveBeenCalledWith('abc')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// GET /api/admin/app-config
+// ---------------------------------------------------------------------------
+
+describe('GET /api/admin/app-config', () => {
+  it('returns the current app config', async () => {
+    mockLoadAppConfig.mockReturnValue({ time_format: '12h', theme: 'green' })
+    const res = await adminRoutes.request('/api/admin/app-config', { headers: await adminHeaders() })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ time_format: '12h', theme: 'green' })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// PUT /api/admin/app-config
+// ---------------------------------------------------------------------------
+
+describe('PUT /api/admin/app-config', () => {
+  it('updates time_format and theme when valid values provided', async () => {
+    mockLoadAppConfig.mockReturnValue({ time_format: '24h', theme: 'blue' })
+    const res = await adminRoutes.request('/api/admin/app-config', {
+      method: 'PUT',
+      headers: { ...(await adminHeaders()), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ time_format: '12h', theme: 'green' }),
+    })
+    expect(res.status).toBe(200)
+    expect(mockSaveAppConfig).toHaveBeenCalledWith({ time_format: '12h', theme: 'green' })
+  })
+
+  it('ignores invalid time_format values', async () => {
+    mockLoadAppConfig.mockReturnValue({ time_format: '24h', theme: 'blue' })
+    const res = await adminRoutes.request('/api/admin/app-config', {
+      method: 'PUT',
+      headers: { ...(await adminHeaders()), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ time_format: 'invalid', theme: 'blue' }),
+    })
+    expect(res.status).toBe(200)
+    expect(mockSaveAppConfig).toHaveBeenCalledWith({ time_format: '24h', theme: 'blue' })
+  })
+
+  it('sets theme to undefined when empty string is provided', async () => {
+    mockLoadAppConfig.mockReturnValue({ time_format: '24h', theme: 'blue' })
+    const res = await adminRoutes.request('/api/admin/app-config', {
+      method: 'PUT',
+      headers: { ...(await adminHeaders()), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ theme: '' }),
+    })
+    expect(res.status).toBe(200)
+    expect(mockSaveAppConfig).toHaveBeenCalledWith({ time_format: '24h', theme: undefined })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// POST /api/admin/app-config/favicon
+// ---------------------------------------------------------------------------
+
+describe('POST /api/admin/app-config/favicon', () => {
+  it('returns 400 for unsupported file type', async () => {
+    const formData = new FormData()
+    formData.append('favicon', new File(['data'], 'icon.bmp', { type: 'image/bmp' }))
+    const res = await adminRoutes.request('/api/admin/app-config/favicon', {
+      method: 'POST',
+      headers: await adminHeaders(),
+      body: formData,
+    })
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toBe('Unsupported file type.')
+  })
+
+  it('saves the favicon file and updates app config', async () => {
+    mockLoadAppConfig.mockReturnValue({})
+    const formData = new FormData()
+    formData.append('favicon', new File(['png-data'], 'favicon.png', { type: 'image/png' }))
+    const res = await adminRoutes.request('/api/admin/app-config/favicon', {
+      method: 'POST',
+      headers: await adminHeaders(),
+      body: formData,
+    })
+    expect(res.status).toBe(200)
+    expect((await res.json()).ext).toBe('png')
+    expect(mockMkdirSync).toHaveBeenCalled()
+    expect(mockWriteFileSync).toHaveBeenCalled()
+    expect(mockSaveAppConfig).toHaveBeenCalledWith(expect.objectContaining({ favicon_ext: 'png' }))
   })
 })

@@ -26,12 +26,12 @@ import { ref } from 'vue'
 import { api, ApiError } from '../../api/client.js'
 import { useToast } from '../../composables/useToast.js'
 
-const props = defineProps<{ empId: string; name: string; dept: string }>()
+const props = defineProps<{ empId: string; name: string; dept: string; defaultDate?: string }>()
 const emit = defineEmits<{ close: []; saved: [] }>()
 const { toast } = useToast()
 
-const clockIn = ref('')
-const clockOut = ref('')
+const clockIn = ref(props.defaultDate ? props.defaultDate + 'T00:00' : '')
+const clockOut = ref(props.defaultDate ? props.defaultDate + 'T00:00' : '')
 const error = ref('')
 const loading = ref(false)
 

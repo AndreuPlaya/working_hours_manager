@@ -13,6 +13,8 @@ import {
   getDataRoot,
   loadSettings,
   saveSettings,
+  loadAppConfig,
+  saveAppConfig,
   ensureSecretKey,
   findUser,
 } from '../../infrastructure/settings.js'
@@ -80,6 +82,35 @@ describe('saveSettings', () => {
       JSON.stringify(s, null, 2),
       'utf-8'
     )
+  })
+})
+
+// ---------------------------------------------------------------------------
+// loadAppConfig / saveAppConfig
+// ---------------------------------------------------------------------------
+
+describe('loadAppConfig', () => {
+  it('returns empty object when app_config is not set', () => {
+    mockExists.mockReturnValue(true)
+    mockRead.mockReturnValue(JSON.stringify({ employees: {}, admin_users: {}, secret_key: '' }))
+    expect(loadAppConfig()).toEqual({})
+  })
+
+  it('returns the stored app_config', () => {
+    mockExists.mockReturnValue(true)
+    mockRead.mockReturnValue(JSON.stringify({ employees: {}, admin_users: {}, secret_key: '', app_config: { time_format: '12h', theme: 'dark' } }))
+    expect(loadAppConfig()).toEqual({ time_format: '12h', theme: 'dark' })
+  })
+})
+
+describe('saveAppConfig', () => {
+  it('merges app_config into settings and saves', () => {
+    mockExists.mockReturnValue(true)
+    mockRead.mockReturnValue(JSON.stringify({ employees: {}, admin_users: {}, secret_key: 'k' }))
+    saveAppConfig({ time_format: '24h', theme: 'green' })
+    expect(mockWrite).toHaveBeenCalled()
+    const written = JSON.parse(mockWrite.mock.calls[0][1] as string)
+    expect(written.app_config).toEqual({ time_format: '24h', theme: 'green' })
   })
 })
 

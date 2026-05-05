@@ -26,7 +26,7 @@ export const authMiddleware = createMiddleware(async (c, next) => {
       isAdmin: payload.isAdmin as boolean,
       empId: (payload.empId as string | null) ?? null,
     })
-    await next()
+    return await next()
   } catch {
     return c.json({ ok: false, error: 'Session expired.' }, 401)
   }
@@ -35,5 +35,5 @@ export const authMiddleware = createMiddleware(async (c, next) => {
 export const adminMiddleware = createMiddleware(async (c, next) => {
   const user = c.get('user')
   if (!user?.isAdmin) return c.json({ ok: false, error: 'Admin access required.' }, 403)
-  await next()
+  return await next()
 })

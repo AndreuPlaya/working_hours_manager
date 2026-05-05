@@ -1,8 +1,9 @@
 import { Hono } from 'hono'
-import { addCorrection, bulkDelete, deleteCorrection, editCorrection, getPending, queueCorrection } from '../application/correctionService.js'
+import { addCorrection, bulkDelete, deleteCorrection, editCorrection, getPending, queueCorrection, rejectPending } from '../application/correctionService.js'
 import { getEmployeeReport, getEmployeeReportUrls, getEventsData, getReportIndex } from '../application/reportService.js'
-import { changePassword, ERR_MISSING, ERR_NOT_FOUND, ERR_WRONG_PW, getProfiles } from '../application/userService.js'
+import { changePassword, ERR_MISSING, ERR_NOT_FOUND, ERR_USERNAME_TAKEN, ERR_WRONG_PW, getProfiles, updateProfile } from '../application/userService.js'
 import { adminMiddleware, authMiddleware } from '../middleware/auth.js'
+import { loadAppConfig, loadSettings } from '../infrastructure/settings.js'
 
 const editor = new Hono()
 
@@ -17,12 +18,18 @@ editor.get('/api/profiles', c => c.json(getProfiles()))
 
 editor.get('/api/config', c => {
   const user = c.get('user')
-  return c.json({
-    username: user.username,
-    is_admin: user.isAdmin,
-    emp_id: user.empId,
-    restrict_edits: !user.isAdmin,
-  })
+  let full_name: string | undefined, email: string | undefined
+  if (user.empId) {
+    const emp = loadSettings().employees[user.empId]
+    full_name = emp?.full_name ?? ''
+    email = emp?.email ?? ''
+  }
+  return c.json({ username: user.username, is_admin: user.isAdmin, emp_id: user.empId, restrict_edits: !user.isAdmin, full_name, email })
+})
+
+editor.get('/api/app-config', c => {
+  const cfg = loadAppConfig()
+  return c.json({ time_format: cfg.time_format ?? '24h', theme: cfg.theme ?? 'blue' })
 })
 
 editor.get('/api/my-reports', c => {
@@ -38,6 +45,19 @@ editor.get('/api/my-pending', c => {
     pending = pending.filter(p => String(p.emp_id) === String(user.empId))
   }
   return c.json(pending)
+})
+
+editor.delete('/api/my-pending/:id', c => {
+  const user = c.get('user')
+  const id = c.req.param('id')
+  const all = getPending()
+  const item = all.find(p => p.id === id)
+  if (!item) return c.json({ ok: false, error: 'Not found.' }, 404)
+  if (!user.isAdmin && item.submitted_by !== user.username) {
+    return c.json({ ok: false, error: 'Access denied.' }, 403)
+  }
+  rejectPending(id)
+  return c.json({ ok: true })
 })
 
 editor.get('/api/reports', adminMiddleware, c => c.json(getReportIndex()))
@@ -58,6 +78,17 @@ editor.get('/api/reports/:stem', c => {
 
 editor.get('/api/employee-reports/:empId', adminMiddleware, c => {
   return c.json(getEmployeeReportUrls(c.req.param('empId')))
+})
+
+editor.put('/api/profile', async c => {
+  const user = c.get('user')
+  if (!user.empId) return c.json({ ok: false, error: 'Profile editing is only available for employees.' }, 403)
+  const data = await c.req.json<{ full_name?: string; email?: string; username?: string; current_password?: string; new_password?: string }>()
+  const err = updateProfile(user.username, data)
+  if (err === ERR_NOT_FOUND) return c.json({ ok: false, error: 'User not found.' }, 404)
+  if (err === ERR_WRONG_PW) return c.json({ ok: false, error: 'Current password is incorrect.' }, 401)
+  if (err === ERR_USERNAME_TAKEN) return c.json({ ok: false, error: 'Username already taken.' }, 409)
+  return c.json({ ok: true })
 })
 
 editor.put('/api/change-password', async c => {
@@ -98,10 +129,18 @@ editor.post('/api/edit', async c => {
   return c.json({ ok: true, pending: true })
 })
 
-editor.post('/api/delete', adminMiddleware, async c => {
+editor.post('/api/delete', async c => {
+  const user = c.get('user')
   const d = await c.req.json<{ emp_id: string; name: string; dept: string; timestamp: string }>()
-  deleteCorrection(d.emp_id, d.name, d.dept, d.timestamp)
-  return c.json({ ok: true })
+  if (!user.isAdmin && String(d.emp_id) !== String(user.empId)) {
+    return c.json({ ok: false, error: 'Access denied.' }, 403)
+  }
+  if (user.isAdmin) {
+    deleteCorrection(d.emp_id, d.name, d.dept, d.timestamp)
+    return c.json({ ok: true })
+  }
+  queueCorrection('DEL', d.emp_id, d.name, d.dept, d.timestamp, null, user.username)
+  return c.json({ ok: true, pending: true })
 })
 
 editor.post('/api/bulk-delete', adminMiddleware, async c => {

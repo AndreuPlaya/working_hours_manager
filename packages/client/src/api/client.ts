@@ -30,6 +30,14 @@ export interface Config {
   is_admin: boolean
   emp_id: string | null
   restrict_edits: boolean
+  full_name?: string
+  email?: string
+}
+
+export interface AppConfigResponse {
+  time_format: '24h' | '12h'
+  theme: string
+  date_format?: string
 }
 
 export interface Profile {
@@ -53,7 +61,7 @@ export interface ReportUrl {
 
 export interface PendingItem {
   id: string
-  action: 'ADD' | 'EDIT'
+  action: 'ADD' | 'EDIT' | 'DEL'
   emp_id: string
   name: string
   dept: string
@@ -97,6 +105,7 @@ export interface Employee {
   raw_name: string
   alias: string
   full_name: string
+  email: string
   username: string
   has_password: boolean
   enabled: boolean
@@ -142,9 +151,13 @@ export const api = {
   myPending: () => get<PendingItem[]>('/api/my-pending'),
   add: (body: { emp_id: string; name: string; dept: string; timestamp: string }) => post<{ ok: boolean; pending?: boolean }>('/api/add', body),
   edit: (body: { emp_id: string; name: string; dept: string; old_timestamp: string; new_timestamp: string }) => post<{ ok: boolean; pending?: boolean }>('/api/edit', body),
-  delete: (body: { emp_id: string; name: string; dept: string; timestamp: string }) => post<{ ok: boolean }>('/api/delete', body),
+  delete: (body: { emp_id: string; name: string; dept: string; timestamp: string }) => post<{ ok: boolean; pending?: boolean }>('/api/delete', body),
   bulkDelete: (items: { emp_id: string; name: string; dept: string; timestamp: string }[]) => post<{ ok: boolean }>('/api/bulk-delete', items),
+  cancelMyPending: (id: string) => del<{ ok: boolean }>(`/api/my-pending/${id}`),
   changePassword: (current_password: string, new_password: string) => put<{ ok: boolean }>('/api/change-password', { current_password, new_password }),
+  updateProfile: (data: { full_name?: string; email?: string; username?: string; current_password?: string; new_password?: string }) =>
+    put<{ ok: boolean }>('/api/profile', data),
+  appConfig: () => get<AppConfigResponse>('/api/app-config'),
   employeeReports: (empId: string) => get<ReportUrl[]>(`/api/employee-reports/${empId}`),
   reports: () => get<ReportIndex>('/api/reports'),
   report: (stem: string) => get<EmployeeReport>(`/api/reports/${stem}`),
@@ -167,6 +180,16 @@ export const api = {
       return data as { ok: boolean; name: string }
     },
     deleteFile: (filename: string) => del<{ ok: boolean }>(`/api/admin/raw-files/${encodeURIComponent(filename)}`),
+    getAppConfig: () => get<{ time_format?: string; theme?: string; favicon_ext?: string; date_format?: string }>('/api/admin/app-config'),
+    updateAppConfig: (data: { time_format?: string; theme?: string; date_format?: string }) => put<{ ok: boolean }>('/api/admin/app-config', data),
+    uploadFavicon: async (file: File) => {
+      const form = new FormData()
+      form.append('favicon', file)
+      const res = await fetch('/api/admin/app-config/favicon', { method: 'POST', body: form, credentials: 'same-origin' })
+      const data = await res.json()
+      if (!res.ok) throw new ApiError(res.status, (data as any).error ?? res.statusText)
+      return data as { ok: boolean; ext: string }
+    },
     pending: () => get<PendingItem[]>('/api/admin/pending'),
     pendingPreview: (id: string) => get<{ ok: boolean } & PreviewResult>(`/api/admin/pending/${id}/preview`),
     approvePending: (id: string) => post<{ ok: boolean }>(`/api/admin/pending/${id}/approve`, {}),

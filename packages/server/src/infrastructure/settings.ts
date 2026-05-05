@@ -9,16 +9,25 @@ export interface EmployeeRecord {
   password_hash: string
   is_admin: boolean
   enabled: boolean
+  email?: string
 }
 
 export interface AdminRecord {
   password_hash: string
 }
 
+export interface AppConfig {
+  time_format?: '24h' | '12h'
+  theme?: string
+  favicon_ext?: string
+  date_format?: string
+}
+
 export interface Settings {
   employees: Record<string, EmployeeRecord>
   admin_users: Record<string, AdminRecord>
   secret_key: string
+  app_config?: AppConfig
 }
 
 let dataRoot = process.env.DATA_DIR ?? '.'
@@ -51,6 +60,16 @@ export function saveSettings(s: Settings): void {
   const p = configPath()
   mkdirSync(join(dataRoot, 'config'), { recursive: true })
   writeFileSync(p, JSON.stringify(s, null, 2), 'utf-8')
+}
+
+export function loadAppConfig(): AppConfig {
+  return loadSettings().app_config ?? {}
+}
+
+export function saveAppConfig(cfg: AppConfig): void {
+  const s = loadSettings()
+  s.app_config = cfg
+  saveSettings(s)
 }
 
 export function ensureSecretKey(): string {

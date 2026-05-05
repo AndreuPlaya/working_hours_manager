@@ -1,0 +1,14 @@
+{
+  "name": "working-hours-manager",
+  "private": true,
+  "scripts": {
+    "dev:server": "pnpm -F server dev",
+    "dev:client": "pnpm -F client dev",
+    "build": "pnpm -F client build && pnpm -F server build",
+    "start": "pnpm -F server start"
+  },
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=9"
+  }
+}

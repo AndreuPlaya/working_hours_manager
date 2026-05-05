@@ -31,7 +31,7 @@ app.get('/favicon.ico', async c => {
       return new Response(readFileSync(p), { headers: { 'Content-Type': mime, 'Cache-Control': 'public, max-age=3600' } })
     }
   }
-  return serveStatic({ root: CLIENT_DIST })(c, async () => {})
+  return c.notFound()
 })
 
 // SPA fallback — serve index.html for all non-API routes

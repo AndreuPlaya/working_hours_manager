@@ -35,7 +35,6 @@ export interface Config {
 }
 
 export interface AppConfigResponse {
-  time_format: '24h' | '12h'
   theme: string
   date_format?: string
 }

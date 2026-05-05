@@ -17,7 +17,6 @@ export interface AdminRecord {
 }
 
 export interface AppConfig {
-  time_format?: '24h' | '12h'
   theme?: string
   favicon_ext?: string
   date_format?: string

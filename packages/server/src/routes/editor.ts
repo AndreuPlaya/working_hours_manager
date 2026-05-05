@@ -29,7 +29,7 @@ editor.get('/api/config', c => {
 
 editor.get('/api/app-config', c => {
   const cfg = loadAppConfig()
-  return c.json({ time_format: cfg.time_format ?? '24h', theme: cfg.theme ?? 'blue' })
+  return c.json({ theme: cfg.theme ?? 'blue', date_format: cfg.date_format ?? 'MM/dd(ddd)' })
 })
 
 editor.get('/api/my-reports', c => {

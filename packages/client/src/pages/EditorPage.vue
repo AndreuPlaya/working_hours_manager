@@ -40,6 +40,10 @@
               <RouterLink v-if="reportUrl" :to="reportUrl" class="btn btn-secondary" target="_blank">
                 View report
               </RouterLink>
+              <button class="btn btn-secondary" title="Print" @click="showPrintModal = true">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                Print
+              </button>
             </div>
           </div>
 
@@ -52,6 +56,7 @@
             @edit-cell="onEditCell"
             @edit-cell-replace-pending="onEditCellReplacePending"
             @add-event="onAddEvent"
+            @delete-event="onDeleteEvent"
           />
         </template>
       </div>
@@ -66,6 +71,14 @@
       @close="showProfileModal = false"
       @saved="onProfileSaved"
     />
+    <PrintModal
+      v-if="showPrintModal && selectedKey"
+      :rows="events[selectedKey] ?? []"
+      :year="currentYear"
+      :month="currentMonth"
+      :employee-name="selectedName"
+      @close="showPrintModal = false"
+    />
   </div>
 </template>
 
@@ -78,6 +91,7 @@ import { useToast } from '../composables/useToast.js'
 import EmployeeSidebar from '../components/editor/EmployeeSidebar.vue'
 import MonthView from '../components/editor/MonthView.vue'
 import ProfileModal from '../components/editor/ProfileModal.vue'
+import PrintModal from '../components/editor/PrintModal.vue'
 import { useAppConfig } from '../composables/useAppConfig.js'
 
 useAppConfig()
@@ -93,6 +107,7 @@ const pending = ref<PendingItem[]>([])
 
 const selectedKey = ref<string | null>(null)
 const showProfileModal = ref(false)
+const showPrintModal = ref(false)
 
 const now = new Date()
 const currentYear = ref(now.getFullYear())
@@ -188,6 +203,18 @@ async function onAddEvent(payload: { timestamp: string }) {
     pending.value = await api.myPending()
   } catch (e) {
     toast(e instanceof ApiError ? e.message : 'Error saving.')
+  }
+}
+
+async function onDeleteEvent(payload: { timestamp: string }) {
+  const { empId, name, dept } = keyParts(selectedKey.value!)
+  try {
+    const res = await api.delete({ emp_id: empId, name, dept, timestamp: payload.timestamp })
+    toast(res.pending ? 'Submitted for approval.' : 'Deleted.')
+    events.value = await api.events()
+    pending.value = await api.myPending()
+  } catch (e) {
+    toast(e instanceof ApiError ? e.message : 'Error deleting.')
   }
 }
 

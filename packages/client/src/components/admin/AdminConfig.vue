@@ -3,21 +3,6 @@
     <div v-if="loading" class="muted">Loading…</div>
     <template v-else>
 
-      <!-- Time format -->
-      <section class="config-section">
-        <h3>Time format</h3>
-        <div class="radio-group">
-          <label>
-            <input type="radio" v-model="timeFormat" value="24h" />
-            24h (14:30)
-          </label>
-          <label>
-            <input type="radio" v-model="timeFormat" value="12h" />
-            12h (2:30 PM)
-          </label>
-        </div>
-      </section>
-
       <!-- Date format -->
       <section class="config-section">
         <h3>Date format</h3>
@@ -76,7 +61,6 @@ const { toast } = useToast()
 
 const loading = ref(true)
 const saving = ref(false)
-const timeFormat = ref<'24h' | '12h'>('24h')
 const dateFormat = ref('MM/dd(ddd)')
 const selectedTheme = ref('blue')
 const faviconExt = ref<string | undefined>()
@@ -92,7 +76,6 @@ const themes = [
 onMounted(async () => {
   try {
     const cfg = await api.admin.getAppConfig()
-    timeFormat.value = (cfg.time_format as '24h' | '12h') ?? '24h'
     dateFormat.value = cfg.date_format ?? 'MM/dd(ddd)'
     selectedTheme.value = cfg.theme ?? 'blue'
     faviconExt.value = cfg.favicon_ext
@@ -109,7 +92,7 @@ function pickTheme(id: string) {
 async function save() {
   saving.value = true
   try {
-    await api.admin.updateAppConfig({ time_format: timeFormat.value, theme: selectedTheme.value, date_format: dateFormat.value })
+    await api.admin.updateAppConfig({ theme: selectedTheme.value, date_format: dateFormat.value })
     applyTheme(selectedTheme.value)
     toast('Settings saved.')
   } catch (e) {
@@ -145,11 +128,6 @@ async function uploadFavicon(e: Event) {
   &:last-of-type { border-bottom: none; }
 
   h3 { margin: 0 0 .75rem; font-size: .9rem; font-weight: 600; color: $text-label; text-transform: uppercase; letter-spacing: .04em; }
-}
-
-.radio-group {
-  display: flex; gap: 1.5rem;
-  label { display: flex; align-items: center; gap: .4rem; font-size: .875rem; cursor: pointer; }
 }
 
 .theme-row { display: flex; gap: .5rem; flex-wrap: wrap; }

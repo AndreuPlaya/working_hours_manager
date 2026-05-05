@@ -2,13 +2,12 @@ import { ref } from 'vue'
 import { api } from '../api/client.js'
 
 export interface AppConfigState {
-  time_format: '24h' | '12h'
   theme: string
   date_format: string
 }
 
 let promise: Promise<AppConfigState> | null = null
-const config = ref<AppConfigState>({ time_format: '24h', theme: 'blue', date_format: 'MM/dd(ddd)' })
+const config = ref<AppConfigState>({ theme: 'blue', date_format: 'MM/dd(ddd)' })
 
 const THEMES: Record<string, Record<string, string>> = {
   blue:   { '--accent': '#2563eb', '--accent-dark': '#1d4ed8' },

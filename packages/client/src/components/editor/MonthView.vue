@@ -2,7 +2,7 @@
   <div class="month-view">
     <div v-if="!dayGroups.length && !draftRow" class="empty-month">
       <span>No sessions this month.</span>
-      <button class="btn btn-primary" @click="draftRow = { date: monthPrefix + '-01' }">+ Add session</button>
+      <button class="btn btn-primary" @click="draftRow = { date: monthPrefix + '-01', dateEditable: true }">+ Add session</button>
     </div>
     <table v-else>
       <thead>
@@ -41,6 +41,12 @@
                   {{ fmtTime(pendingNewTs(row.original, 'clock_in')!) }}
                   <span class="badge-pending">pending</span>
                 </span>
+                <button
+                  v-if="!hasPendingDel(row.original)"
+                  class="del-btn"
+                  title="Delete this clock-in"
+                  @click.stop="$emit('delete-event', { timestamp: row.original.clock_in })"
+                >✕</button>
               </template>
             </td>
 
@@ -54,13 +60,19 @@
                 />
               </template>
               <template v-else>
-                <span v-if="row.original.incomplete" class="incomplete-mark" title="Click to add missing clock-out">--:--:--</span>
+                <span v-if="row.original.incomplete" class="incomplete-mark" title="Click to add missing clock-out">--:--</span>
                 <template v-else>
                   <span :class="{ strikethrough: isPendingField(row.original, 'clock_out') }">{{ fmtTime(row.original.clock_out!) }}</span>
                   <span v-if="isPendingField(row.original, 'clock_out')" class="pending-val">
                     {{ fmtTime(pendingNewTs(row.original, 'clock_out')!) }}
                     <span class="badge-pending">pending</span>
                   </span>
+                  <button
+                    v-if="!hasPendingDel(row.original)"
+                    class="del-btn"
+                    title="Delete this clock-out"
+                    @click.stop="$emit('delete-event', { timestamp: row.original.clock_out! })"
+                  >✕</button>
                 </template>
               </template>
             </td>
@@ -90,7 +102,7 @@
                 @cancel="draftRow = null"
               />
             </td>
-            <td class="col-time"><span class="incomplete-mark">--:--:--</span></td>
+            <td class="col-time"><span class="incomplete-mark">--:--</span></td>
             <td class="col-dur">—</td>
             <td class="col-actions"></td>
           </tr>
@@ -104,9 +116,19 @@
           </tr>
         </template>
 
-        <!-- Draft row for empty month (no existing day groups) -->
-        <tr v-if="draftRow && !dayGroups.length" class="draft-row">
-          <td class="col-date"></td>
+        <!-- Draft row for empty month or new day (no existing day groups match) -->
+        <tr v-if="draftRow && (!dayGroups.length || draftRow.dateEditable)" class="draft-row">
+          <td class="col-date">
+            <input
+              v-if="draftRow.dateEditable"
+              type="date"
+              class="date-input"
+              :value="draftRow.date"
+              :min="monthPrefix + '-01'"
+              :max="monthPrefix + '-31'"
+              @change="e => draftRow && (draftRow.date = (e.target as HTMLInputElement).value)"
+            />
+          </td>
           <td class="time-cell col-time">
             <TimeInput
               :time="null"
@@ -114,7 +136,7 @@
               @cancel="draftRow = null"
             />
           </td>
-          <td class="col-time"><span class="incomplete-mark">--:--:--</span></td>
+          <td class="col-time"><span class="incomplete-mark">--:--</span></td>
           <td class="col-dur">—</td>
           <td class="col-actions"></td>
         </tr>
@@ -124,7 +146,14 @@
           <td class="col-date"></td>
           <td colspan="2" class="total-label">Month total</td>
           <td class="col-dur">{{ monthTotal }}</td>
-          <td class="col-actions"></td>
+          <td class="col-actions">
+            <button
+              v-if="!draftRow"
+              class="add-btn new-day-btn"
+              title="Add session for a new day"
+              @click.stop="draftRow = { date: monthPrefix + '-01', dateEditable: true }"
+            >+</button>
+          </td>
         </tr>
       </tfoot>
     </table>
@@ -150,6 +179,7 @@ const emit = defineEmits<{
   'edit-cell': [payload: { oldTimestamp: string; newTimestamp: string }]
   'edit-cell-replace-pending': [payload: { pendingId: string; oldTimestamp: string; newTimestamp: string }]
   'add-event': [payload: { timestamp: string }]
+  'delete-event': [payload: { timestamp: string }]
 }>()
 
 interface EffectiveRow {
@@ -165,7 +195,7 @@ interface DayGroup {
 }
 
 const editing = ref<{ key: string } | null>(null)
-const draftRow = ref<{ date: string } | null>(null)
+const draftRow = ref<{ date: string; dateEditable?: boolean } | null>(null)
 
 const monthPrefix = computed(() => {
   const y = props.year
@@ -289,13 +319,7 @@ const monthTotal = computed<string>(() => {
 })
 
 function fmtTime(ts: string): string {
-  const hhmm = ts.slice(11, 16)
-  if (appConfig.value.time_format === '12h') {
-    const [h, m] = hhmm.split(':').map(Number)
-    const ampm = h >= 12 ? 'PM' : 'AM'
-    return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${ampm}`
-  }
-  return hhmm
+  return ts.slice(11, 16)
 }
 
 function startEdit(row: EventRow, field: 'clock_in' | 'clock_out') {
@@ -437,21 +461,22 @@ table {
 
 .subtotal-row td {
   font-weight: 600;
+  font-size: .82rem;
   border-top: 1px solid $border;
-  background: $bg !important;
-  color: $text-muted;
-  font-size: .8rem;
+  background: $bg;
+  color: $text-label;
 }
-.subtotal-label { font-style: italic; }
 
 tfoot .month-total-row td {
   font-weight: 700;
+  font-size: .85rem;
   border-top: 2px solid $border;
   background: $bg;
+  color: $text-label;
   padding-top: .6rem;
   padding-bottom: .6rem;
 }
-.total-label { color: $text-label; }
+.subtotal-label, .total-label { color: $text-label; }
 
 .add-btn {
   background: none;
@@ -465,5 +490,38 @@ tfoot .month-total-row td {
   transition: opacity .15s;
   tr:hover & { opacity: 1; }
   &:hover { background: $selected-bg; }
+}
+
+.new-day-btn {
+  opacity: 1;
+  tfoot tr:hover & { opacity: 1; }
+}
+
+.del-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: $danger;
+  font-size: .7rem;
+  padding: 0 .2rem;
+  margin-left: .2rem;
+  opacity: 0;
+  transition: opacity .15s;
+  vertical-align: middle;
+  line-height: 1;
+  tr:hover & { opacity: 1; }
+  &:hover { color: $danger-dark; }
+}
+
+.date-input {
+  font-size: .8rem;
+  border: 1px solid $input-border;
+  border-radius: 3px;
+  padding: .15rem .3rem;
+  background: $card;
+  color: $text;
+  width: 100%;
+  max-width: 105px;
+  &:focus { outline: none; border-color: $accent; }
 }
 </style>

@@ -6,6 +6,7 @@ import { getDataRoot, loadSettings } from './settings.js'
 
 export const EDITOR_FILE = 'editor-corrections.txt'
 export const PENDING_FILE = 'pending-corrections.json'
+export const HISTORY_FILE = 'correction-history.json'
 
 export function rawDir(): string {
   return join(getDataRoot(), 'input_data')
@@ -93,4 +94,54 @@ export function removePending(itemId: string): PendingItem | null {
   if (!found) return null
   savePending(items.filter(x => x.id !== itemId))
   return found
+}
+
+export interface HistoryItem {
+  id: string
+  action: 'ADD' | 'EDIT' | 'DEL'
+  emp_id: string
+  name: string
+  dept: string
+  timestamp: string
+  new_timestamp: string | null
+  applied_at: string
+  applied_by: string
+  undone: boolean
+}
+
+function historyPath(): string {
+  return join(correctionsDir(), HISTORY_FILE)
+}
+
+export function loadHistory(): HistoryItem[] {
+  const p = historyPath()
+  if (!existsSync(p)) return []
+  try {
+    return JSON.parse(readFileSync(p, 'utf-8')) as HistoryItem[]
+  } catch {
+    return []
+  }
+}
+
+export function saveHistory(items: HistoryItem[]): void {
+  const p = historyPath()
+  mkdirSync(correctionsDir(), { recursive: true })
+  const tmp = p + '.tmp'
+  writeFileSync(tmp, JSON.stringify(items, null, 2), 'utf-8')
+  renameSync(tmp, p)
+}
+
+export function addToHistory(item: HistoryItem): void {
+  const items = loadHistory()
+  items.push(item)
+  saveHistory(items)
+}
+
+export function markUndone(itemId: string): boolean {
+  const items = loadHistory()
+  const found = items.find(x => x.id === itemId)
+  if (!found) return false
+  found.undone = true
+  saveHistory(items)
+  return true
 }

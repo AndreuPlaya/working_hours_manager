@@ -122,7 +122,7 @@
         </template>
 
         <!-- Draft row for empty month or new day (no existing day groups match) -->
-        <tr v-if="draftRow && (!dayGroups.length || draftRow.dateEditable)" class="draft-row">
+        <tr v-if="draftRow && (!dayGroups.length || draftRow.dateEditable)" ref="draftRowEl" class="draft-row">
           <td class="col-date">
             <input
               v-if="draftRow.dateEditable"
@@ -138,7 +138,7 @@
             <TimeInput
               :time="null"
               @commit="v => commitDraft(draftRow!.date, v)"
-              @cancel="draftRow = null"
+              @cancel="onDraftCancel"
             />
           </td>
           <td class="col-time"><span class="incomplete-mark">--:--</span></td>
@@ -166,7 +166,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 import type { EventRow, PendingItem } from '../../api/client.js'
 import { useAppConfig } from '../../composables/useAppConfig.js'
 import TimeInput from './TimeInput.vue'
@@ -202,6 +202,13 @@ interface DayGroup {
 
 const editing = ref<{ key: string } | null>(null)
 const draftRow = ref<{ date: string; dateEditable?: boolean } | null>(null)
+const draftRowEl = ref<HTMLTableRowElement | null>(null)
+
+async function onDraftCancel() {
+  await nextTick()
+  if (draftRowEl.value?.contains(document.activeElement)) return
+  draftRow.value = null
+}
 
 const monthPrefix = computed(() => {
   const y = props.year

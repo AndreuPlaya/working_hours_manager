@@ -108,7 +108,7 @@ editor.post('/api/add', async c => {
     return c.json({ ok: false, error: 'Access denied.' }, 403)
   }
   if (user.isAdmin) {
-    addCorrection(d.emp_id, d.name, d.dept, d.timestamp)
+    addCorrection(d.emp_id, d.name, d.dept, d.timestamp, user.username)
     return c.json({ ok: true })
   }
   queueCorrection('ADD', d.emp_id, d.name, d.dept, d.timestamp, null, user.username)
@@ -122,7 +122,7 @@ editor.post('/api/edit', async c => {
     return c.json({ ok: false, error: 'Access denied.' }, 403)
   }
   if (user.isAdmin) {
-    editCorrection(d.emp_id, d.name, d.dept, d.old_timestamp, d.new_timestamp)
+    editCorrection(d.emp_id, d.name, d.dept, d.old_timestamp, d.new_timestamp, user.username)
     return c.json({ ok: true })
   }
   queueCorrection('EDIT', d.emp_id, d.name, d.dept, d.old_timestamp, d.new_timestamp, user.username)
@@ -136,7 +136,7 @@ editor.post('/api/delete', async c => {
     return c.json({ ok: false, error: 'Access denied.' }, 403)
   }
   if (user.isAdmin) {
-    deleteCorrection(d.emp_id, d.name, d.dept, d.timestamp)
+    deleteCorrection(d.emp_id, d.name, d.dept, d.timestamp, user.username)
     return c.json({ ok: true })
   }
   queueCorrection('DEL', d.emp_id, d.name, d.dept, d.timestamp, null, user.username)
@@ -144,7 +144,7 @@ editor.post('/api/delete', async c => {
 })
 
 editor.post('/api/bulk-delete', adminMiddleware, async c => {
-  bulkDelete(await c.req.json())
+  bulkDelete(await c.req.json(), c.get('user').username)
   return c.json({ ok: true })
 })
 

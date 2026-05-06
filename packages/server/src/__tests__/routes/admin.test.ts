@@ -433,7 +433,7 @@ describe('POST /api/admin/pending/:id/approve', () => {
       headers: await adminHeaders(),
     })
     expect(res.status).toBe(200)
-    expect(mockApprovePending).toHaveBeenCalledWith('abc')
+    expect(mockApprovePending).toHaveBeenCalledWith('abc', 'admin')
   })
 })
 

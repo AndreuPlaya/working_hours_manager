@@ -120,6 +120,19 @@ export interface RawFile {
   modified: number
 }
 
+export interface HistoryItem {
+  id: string
+  action: 'ADD' | 'EDIT' | 'DEL'
+  emp_id: string
+  name: string
+  dept: string
+  timestamp: string
+  new_timestamp: string | null
+  applied_at: string
+  applied_by: string
+  undone: boolean
+}
+
 export interface PreviewResult {
   employee: string
   emp_id: string
@@ -193,5 +206,7 @@ export const api = {
     pendingPreview: (id: string) => get<{ ok: boolean } & PreviewResult>(`/api/admin/pending/${id}/preview`),
     approvePending: (id: string) => post<{ ok: boolean }>(`/api/admin/pending/${id}/approve`, {}),
     rejectPending: (id: string) => post<{ ok: boolean }>(`/api/admin/pending/${id}/reject`, {}),
+    history: () => get<HistoryItem[]>('/api/admin/history'),
+    undoCorrection: (id: string) => post<{ ok: boolean }>(`/api/admin/history/${id}/undo`, {}),
   },
 }

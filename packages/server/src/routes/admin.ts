@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { Hono } from 'hono'
-import { approvePending, getPending, rejectPending } from '../application/correctionService.js'
+import { approvePending, getPending, getHistory, rejectPending, undoCorrection } from '../application/correctionService.js'
 import { deleteRawFile, listRawFiles, saveRawFile } from '../application/fileService.js'
 import { getEmployeeList, getPendingPreview } from '../application/reportService.js'
 import { createAdmin, deleteAdmin, ERR_MISSING, ERR_NOT_FOUND, listAdmins, updateAdminPassword, updateEmployee } from '../application/userService.js'
@@ -114,12 +114,22 @@ admin.get('/api/admin/pending/:id/preview', c => {
 })
 
 admin.post('/api/admin/pending/:id/approve', c => {
-  if (!approvePending(c.req.param('id'))) return c.json({ ok: false, error: 'Pending item not found.' }, 404)
+  if (!approvePending(c.req.param('id'), c.get('user').username)) return c.json({ ok: false, error: 'Pending item not found.' }, 404)
   return c.json({ ok: true })
 })
 
 admin.post('/api/admin/pending/:id/reject', c => {
   if (!rejectPending(c.req.param('id'))) return c.json({ ok: false, error: 'Pending item not found.' }, 404)
+  return c.json({ ok: true })
+})
+
+// Correction history
+admin.get('/api/admin/history', c => c.json(getHistory()))
+
+admin.post('/api/admin/history/:id/undo', c => {
+  if (!undoCorrection(c.req.param('id'), c.get('user').username)) {
+    return c.json({ ok: false, error: 'Item not found or already undone.' }, 404)
+  }
   return c.json({ ok: true })
 })
 

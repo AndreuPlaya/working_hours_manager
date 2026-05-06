@@ -23,6 +23,7 @@
       <AdminDataFiles v-show="activeTab === 'files'" />
       <AdminPending v-show="activeTab === 'pending'" @count="pendingCount = $event" />
       <AdminConfig v-show="activeTab === 'config'" />
+      <AdminHistory v-if="activeTab === 'history'" />
     </div>
   </div>
 </template>
@@ -36,6 +37,7 @@ import AdminAdmins from '../components/admin/AdminAdmins.vue'
 import AdminDataFiles from '../components/admin/AdminDataFiles.vue'
 import AdminPending from '../components/admin/AdminPending.vue'
 import AdminConfig from '../components/admin/AdminConfig.vue'
+import AdminHistory from '../components/admin/AdminHistory.vue'
 import { useAppConfig } from '../composables/useAppConfig.js'
 
 useAppConfig()
@@ -50,6 +52,7 @@ const tabs = [
   { id: 'files', label: 'Data Files' },
   { id: 'pending', label: 'Pending' },
   { id: 'config', label: 'Config' },
+  { id: 'history', label: 'History' },
 ]
 
 async function logout() {

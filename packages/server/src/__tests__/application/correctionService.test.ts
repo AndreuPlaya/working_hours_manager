@@ -31,7 +31,7 @@ beforeEach(() => {
 
 describe('addCorrection', () => {
   it('calls appendCorrection with an ADD line', () => {
-    addCorrection('1', 'Alice', 'Admin', '2024-01-15 09:00:00')
+    addCorrection('1', 'Alice', 'Admin', '2024-01-15 09:00:00', 'admin')
     expect(mockAppend).toHaveBeenCalledWith('ADD\t1\tAlice\tAdmin\t2024-01-15 09:00:00\t1')
   })
 })
@@ -42,7 +42,7 @@ describe('addCorrection', () => {
 
 describe('deleteCorrection', () => {
   it('calls appendCorrection with a DEL line', () => {
-    deleteCorrection('1', 'Alice', 'Admin', '2024-01-15 09:00:00')
+    deleteCorrection('1', 'Alice', 'Admin', '2024-01-15 09:00:00', 'admin')
     expect(mockAppend).toHaveBeenCalledWith('DEL\t1\tAlice\tAdmin\t2024-01-15 09:00:00\t1')
   })
 })
@@ -53,7 +53,7 @@ describe('deleteCorrection', () => {
 
 describe('editCorrection', () => {
   it('calls appendCorrection with an EDIT line', () => {
-    editCorrection('1', 'Alice', 'Admin', '2024-01-15 09:00:00', '2024-01-15 09:05:00')
+    editCorrection('1', 'Alice', 'Admin', '2024-01-15 09:00:00', '2024-01-15 09:05:00', 'admin')
     expect(mockAppend).toHaveBeenCalledWith('EDIT\t1\tAlice\tAdmin\t2024-01-15 09:00:00\t2024-01-15 09:05:00\t1')
   })
 })
@@ -68,7 +68,7 @@ describe('bulkDelete', () => {
       { emp_id: '1', name: 'Alice', dept: 'Admin', timestamp: '2024-01-15 09:00:00' },
       { emp_id: '2', name: 'Bob', dept: 'HR', timestamp: '2024-01-15 10:00:00' },
     ]
-    bulkDelete(items)
+    bulkDelete(items, 'admin')
     expect(mockAppend).toHaveBeenCalledTimes(2)
     expect(mockAppend).toHaveBeenNthCalledWith(1, 'DEL\t1\tAlice\tAdmin\t2024-01-15 09:00:00\t1')
     expect(mockAppend).toHaveBeenNthCalledWith(2, 'DEL\t2\tBob\tHR\t2024-01-15 10:00:00\t1')
@@ -129,27 +129,27 @@ describe('getPending', () => {
 describe('approvePending', () => {
   it('returns false when the item is not found', () => {
     mockRemovePending.mockReturnValue(null)
-    expect(approvePending('missing')).toBe(false)
+    expect(approvePending('missing', 'admin')).toBe(false)
   })
 
   it('appends an ADD correction and returns true for ADD action', () => {
     const item: PendingItem = { id: 'x', action: 'ADD', emp_id: '1', name: 'Alice', dept: 'Admin', timestamp: '2024-01-15 09:00:00', new_timestamp: null, submitted_at: 's', submitted_by: 'u' }
     mockRemovePending.mockReturnValue(item)
-    expect(approvePending('x')).toBe(true)
+    expect(approvePending('x', 'admin')).toBe(true)
     expect(mockAppend).toHaveBeenCalledWith('ADD\t1\tAlice\tAdmin\t2024-01-15 09:00:00\t1')
   })
 
   it('appends an EDIT correction and returns true for EDIT action', () => {
     const item: PendingItem = { id: 'y', action: 'EDIT', emp_id: '1', name: 'Alice', dept: 'Admin', timestamp: '2024-01-15 09:00:00', new_timestamp: '2024-01-15 09:05:00', submitted_at: 's', submitted_by: 'u' }
     mockRemovePending.mockReturnValue(item)
-    expect(approvePending('y')).toBe(true)
+    expect(approvePending('y', 'admin')).toBe(true)
     expect(mockAppend).toHaveBeenCalledWith('EDIT\t1\tAlice\tAdmin\t2024-01-15 09:00:00\t2024-01-15 09:05:00\t1')
   })
 
   it('appends a DEL correction and returns true for DEL action', () => {
     const item: PendingItem = { id: 'w', action: 'DEL', emp_id: '1', name: 'Alice', dept: 'Admin', timestamp: '2024-01-15 09:00:00', new_timestamp: null, submitted_at: 's', submitted_by: 'u' }
     mockRemovePending.mockReturnValue(item)
-    expect(approvePending('w')).toBe(true)
+    expect(approvePending('w', 'admin')).toBe(true)
     expect(mockAppend).toHaveBeenCalledWith('DEL\t1\tAlice\tAdmin\t2024-01-15 09:00:00\t1')
   })
 })

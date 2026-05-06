@@ -437,7 +437,7 @@ describe('POST /api/bulk-delete', () => {
       body: JSON.stringify(payload),
     })
     expect(res.status).toBe(200)
-    expect(mockBulkDelete).toHaveBeenCalledWith(payload)
+    expect(mockBulkDelete).toHaveBeenCalledWith(payload, 'admin')
   })
 })
 

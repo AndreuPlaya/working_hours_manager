@@ -40,6 +40,7 @@
                 <span v-if="isPendingField(row.original, 'clock_in')" class="pending-val">
                   {{ fmtTime(pendingNewTs(row.original, 'clock_in')!) }}
                   <span class="badge-pending">pending</span>
+                  <button class="cancel-pending-btn" title="Cancel this pending correction" @click.stop="$emit('cancel-pending', { pendingId: pendingFor(row.original, 'clock_in')!.id })">✕</button>
                 </span>
                 <button
                   v-if="!hasPendingDel(row.original)"
@@ -66,6 +67,7 @@
                   <span v-if="isPendingField(row.original, 'clock_out')" class="pending-val">
                     {{ fmtTime(pendingNewTs(row.original, 'clock_out')!) }}
                     <span class="badge-pending">pending</span>
+                    <button class="cancel-pending-btn" title="Cancel this pending correction" @click.stop="$emit('cancel-pending', { pendingId: pendingFor(row.original, 'clock_out')!.id })">✕</button>
                   </span>
                   <button
                     v-if="!hasPendingDel(row.original)"
@@ -82,7 +84,10 @@
 
             <!-- Actions -->
             <td class="col-actions">
-              <span v-if="hasPendingDel(row.original)" class="badge-pending-del">pending delete</span>
+              <span v-if="hasPendingDel(row.original)" class="badge-pending-del">
+                pending delete
+                <button class="cancel-pending-btn cancel-pending-del-btn" title="Cancel this pending deletion" @click.stop="$emit('cancel-pending', { pendingId: pendingForDel(row.original)!.id })">✕</button>
+              </span>
               <button
                 v-if="idx === group.rows.length - 1"
                 class="add-btn"
@@ -180,6 +185,7 @@ const emit = defineEmits<{
   'edit-cell-replace-pending': [payload: { pendingId: string; oldTimestamp: string; newTimestamp: string }]
   'add-event': [payload: { timestamp: string }]
   'delete-event': [payload: { timestamp: string }]
+  'cancel-pending': [payload: { pendingId: string }]
 }>()
 
 interface EffectiveRow {
@@ -247,6 +253,10 @@ function hasPending(row: EventRow): boolean {
 
 function hasPendingDel(row: EventRow): boolean {
   return props.pendingItems.some(p => p.action === 'DEL' && p.timestamp === row.clock_in)
+}
+
+function pendingForDel(row: EventRow): PendingItem | undefined {
+  return props.pendingItems.find(p => p.action === 'DEL' && p.timestamp === row.clock_in)
 }
 
 function pendingNewTs(row: EventRow, field: 'clock_in' | 'clock_out'): string | null {
@@ -511,6 +521,26 @@ tfoot .month-total-row td {
   line-height: 1;
   tr:hover & { opacity: 1; }
   &:hover { color: $danger-dark; }
+}
+
+.cancel-pending-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #92400e;
+  font-size: .6rem;
+  padding: 0 .15rem;
+  margin-left: .1rem;
+  opacity: 0;
+  transition: opacity .15s;
+  vertical-align: middle;
+  line-height: 1;
+  tr:hover & { opacity: 1; }
+  &:hover { color: $danger; }
+}
+
+.cancel-pending-del-btn {
+  color: #991b1b;
 }
 
 .date-input {

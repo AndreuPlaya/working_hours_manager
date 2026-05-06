@@ -3,11 +3,30 @@
     <div class="modal print-modal">
       <div class="modal-header no-print">
         <h2>Print Records</h2>
-        <div class="mode-selector">
-          <label v-for="opt in modeOptions" :key="opt.value">
-            <input type="radio" v-model="mode" :value="opt.value" />
-            {{ opt.label }}
-          </label>
+        <div class="range-selector">
+          <div class="range-field">
+            <label>From</label>
+            <div class="selects">
+              <select v-model="fromMonth">
+                <option v-for="m in months" :key="m.value" :value="m.value">{{ m.label }}</option>
+              </select>
+              <select v-model="fromYear">
+                <option v-for="y in availableYears" :key="y" :value="y">{{ y }}</option>
+              </select>
+            </div>
+          </div>
+          <span class="range-sep">—</span>
+          <div class="range-field">
+            <label>To</label>
+            <div class="selects">
+              <select v-model="toMonth">
+                <option v-for="m in months" :key="m.value" :value="m.value">{{ m.label }}</option>
+              </select>
+              <select v-model="toYear">
+                <option v-for="y in availableYears" :key="y" :value="y">{{ y }}</option>
+              </select>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -71,32 +90,37 @@ const props = defineProps<{
 
 defineEmits<{ close: [] }>()
 
-type Mode = 'month' | 'year' | 'all'
-const mode = ref<Mode>('month')
-
-const modeOptions = [
-  { value: 'month' as Mode, label: 'Selected month' },
-  { value: 'year'  as Mode, label: 'Selected year' },
-  { value: 'all'   as Mode, label: 'Complete records' },
+const months = [
+  { value: 1, label: 'Jan' }, { value: 2, label: 'Feb' }, { value: 3, label: 'Mar' },
+  { value: 4, label: 'Apr' }, { value: 5, label: 'May' }, { value: 6, label: 'Jun' },
+  { value: 7, label: 'Jul' }, { value: 8, label: 'Aug' }, { value: 9, label: 'Sep' },
+  { value: 10, label: 'Oct' }, { value: 11, label: 'Nov' }, { value: 12, label: 'Dec' },
 ]
 
+const availableYears = computed(() => {
+  const years = new Set(props.rows.map(r => Number(r.clock_in.slice(0, 4))))
+  if (years.size === 0) years.add(props.year)
+  return [...years].sort()
+})
+
+const fromMonth = ref(props.month)
+const fromYear = ref(props.year)
+const toMonth = ref(props.month)
+const toYear = ref(props.year)
+
 const modeTitle = computed(() => {
-  if (mode.value === 'month') {
-    return new Date(props.year, props.month - 1).toLocaleString('default', { month: 'long', year: 'numeric' })
-  }
-  if (mode.value === 'year') return String(props.year)
-  return 'All records'
+  const from = new Date(fromYear.value, fromMonth.value - 1).toLocaleString('default', { month: 'short', year: 'numeric' })
+  const to   = new Date(toYear.value,   toMonth.value   - 1).toLocaleString('default', { month: 'short', year: 'numeric' })
+  return from === to ? from : `${from} – ${to}`
 })
 
 function filteredRows() {
-  if (mode.value === 'month') {
-    const prefix = `${props.year}-${String(props.month).padStart(2, '0')}`
-    return props.rows.filter(r => r.clock_in.startsWith(prefix))
-  }
-  if (mode.value === 'year') {
-    return props.rows.filter(r => r.clock_in.startsWith(String(props.year)))
-  }
-  return props.rows
+  const fromKey = `${fromYear.value}-${String(fromMonth.value).padStart(2, '0')}`
+  const toKey   = `${toYear.value}-${String(toMonth.value).padStart(2, '0')}`
+  return props.rows.filter(r => {
+    const key = r.clock_in.slice(0, 7)
+    return key >= fromKey && key <= toKey
+  })
 }
 
 function msFromRow(r: EventRow): number {
@@ -183,9 +207,34 @@ function print() {
   h2 { margin: 0 0 .75rem; font-size: 1.05rem; }
 }
 
-.mode-selector {
-  display: flex; gap: 1.5rem;
-  label { display: flex; align-items: center; gap: .4rem; font-size: .875rem; cursor: pointer; }
+.range-selector {
+  display: flex; align-items: flex-end; gap: 1rem; flex-wrap: wrap;
+}
+
+.range-sep {
+  font-size: 1rem; color: $text-muted; padding-bottom: .25rem;
+}
+
+.range-field {
+  display: flex; flex-direction: column; gap: .25rem;
+
+  label { font-size: .75rem; color: $text-muted; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+
+  .selects {
+    display: flex; gap: .35rem;
+
+    select {
+      padding: .3rem .5rem;
+      border: 1px solid $border;
+      border-radius: 4px;
+      background: $bg;
+      color: $text;
+      font-size: .85rem;
+      cursor: pointer;
+
+      &:focus { outline: 2px solid $accent; outline-offset: 1px; }
+    }
+  }
 }
 
 .print-content {
@@ -274,6 +323,32 @@ table {
     max-height: none;
     overflow: visible;
     padding: 0;
+  }
+
+  /* Each month block starts on a new page (except the first) */
+  .month-heading {
+    break-before: page;
+    &:first-of-type { break-before: avoid; }
+  }
+
+  /* Keep heading + its table together */
+  .month-heading + table {
+    break-before: avoid;
+  }
+
+  /* Don't break inside a table row */
+  tr {
+    break-inside: avoid;
+  }
+
+  /* Keep thead attached to the first rows */
+  thead {
+    break-after: avoid;
+  }
+
+  /* Keep tfoot (month total) with the table body */
+  tfoot {
+    break-before: avoid;
   }
 }
 </style>

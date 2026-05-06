@@ -57,6 +57,7 @@
             @edit-cell-replace-pending="onEditCellReplacePending"
             @add-event="onAddEvent"
             @delete-event="onDeleteEvent"
+            @cancel-pending="onCancelPending"
           />
         </template>
       </div>
@@ -228,6 +229,17 @@ async function onEditCellReplacePending(payload: { pendingId: string; oldTimesta
     pending.value = await api.myPending()
   } catch (e) {
     toast(e instanceof ApiError ? e.message : 'Error saving.')
+  }
+}
+
+async function onCancelPending(payload: { pendingId: string }) {
+  try {
+    await api.cancelMyPending(payload.pendingId)
+    toast('Correction cancelled.')
+    events.value = await api.events()
+    pending.value = await api.myPending()
+  } catch (e) {
+    toast(e instanceof ApiError ? e.message : 'Error cancelling.')
   }
 }
 

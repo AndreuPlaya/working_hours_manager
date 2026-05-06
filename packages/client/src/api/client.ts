@@ -133,6 +133,21 @@ export interface HistoryItem {
   undone: boolean
 }
 
+export interface CorrectionItem {
+  id: string
+  action: 'ADD' | 'EDIT' | 'DEL'
+  emp_id: string
+  name: string
+  dept: string
+  timestamp: string
+  new_timestamp: string | null
+  status: 'pending' | 'approved'
+  submitted_at?: string
+  submitted_by?: string
+  applied_at?: string
+  applied_by?: string
+}
+
 export interface PreviewResult {
   employee: string
   emp_id: string
@@ -208,5 +223,6 @@ export const api = {
     rejectPending: (id: string) => post<{ ok: boolean }>(`/api/admin/pending/${id}/reject`, {}),
     history: () => get<HistoryItem[]>('/api/admin/history'),
     undoCorrection: (id: string) => post<{ ok: boolean }>(`/api/admin/history/${id}/undo`, {}),
+    revertCorrection: (id: string) => post<{ ok: boolean }>(`/api/admin/history/${id}/revert`, {}),
   },
 }

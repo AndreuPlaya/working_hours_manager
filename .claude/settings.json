@@ -60,7 +60,13 @@
       "Bash(pnpm --filter server exec tsc --noEmit)",
       "Bash(git stash *)",
       "Bash(pnpm --filter server test -- --reporter=verbose src/__tests__/application/correctionService.test.ts)",
-      "Bash(pnpm --filter server test)"
+      "Bash(pnpm --filter server test)",
+      "Bash(npx tsc *)",
+      "Bash(npx vue-tsc *)",
+      "Bash(node_modules/.bin/tsc -p packages/server/tsconfig.json --noEmit)",
+      "Bash(pnpm exec *)",
+      "Bash(packages/server/node_modules/.bin/tsc -p packages/server/tsconfig.json --noEmit)",
+      "Bash(packages/client/node_modules/.bin/vue-tsc -p packages/client/tsconfig.json --noEmit)"
     ]
   }
 }

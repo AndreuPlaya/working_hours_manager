@@ -91,9 +91,11 @@ Password hashing: new passwords use **bcrypt**. Existing werkzeug PBKDF2-SHA256 
 
 ## Corrections system
 
-Place `.txt` files in `corrections/` using the same tab-separated format as `input_data/`. The web editor writes to `corrections/editor-corrections.txt`. Lines starting with `#` are ignored.
+The web editor records corrections in `corrections/correction-history.json` (JSON, append-only, with metadata: who applied it, when, UUID, and an `undone` flag). This is the single source of truth for web editor corrections.
 
-Three action types (plain lines are treated as `ADD`):
+You can also place manual `.txt` files in `corrections/` using the same tab-separated format as `input_data/` — these are applied first as static imports before history corrections. Lines starting with `#` are ignored.
+
+Three action types for manual `.txt` files (plain lines are treated as `ADD`):
 
 ```
 ADD   2   Angelica   Admin   2024-01-23 17:30:00   1

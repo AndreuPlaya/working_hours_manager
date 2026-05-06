@@ -13,7 +13,7 @@
     <div class="tabs">
       <button v-for="tab in tabs" :key="tab.id" class="tab-btn" :class="{ active: activeTab === tab.id }" @click="activeTab = tab.id">
         {{ tab.label }}
-        <span v-if="tab.id === 'pending' && pendingCount > 0" class="badge badge-count">{{ pendingCount }}</span>
+        <span v-if="tab.id === 'corrections' && pendingCount > 0" class="badge badge-count">{{ pendingCount }}</span>
       </button>
     </div>
 
@@ -21,9 +21,8 @@
       <AdminEmployees v-show="activeTab === 'employees'" />
       <AdminAdmins v-show="activeTab === 'admins'" />
       <AdminDataFiles v-show="activeTab === 'files'" />
-      <AdminPending v-show="activeTab === 'pending'" @count="pendingCount = $event" />
       <AdminConfig v-show="activeTab === 'config'" />
-      <AdminHistory v-if="activeTab === 'history'" />
+      <AdminCorrections v-if="activeTab === 'corrections'" @count="pendingCount = $event" />
     </div>
   </div>
 </template>
@@ -35,9 +34,8 @@ import { api } from '../api/client.js'
 import AdminEmployees from '../components/admin/AdminEmployees.vue'
 import AdminAdmins from '../components/admin/AdminAdmins.vue'
 import AdminDataFiles from '../components/admin/AdminDataFiles.vue'
-import AdminPending from '../components/admin/AdminPending.vue'
 import AdminConfig from '../components/admin/AdminConfig.vue'
-import AdminHistory from '../components/admin/AdminHistory.vue'
+import AdminCorrections from '../components/admin/AdminCorrections.vue'
 import { useAppConfig } from '../composables/useAppConfig.js'
 
 useAppConfig()
@@ -50,9 +48,8 @@ const tabs = [
   { id: 'employees', label: 'Employees' },
   { id: 'admins', label: 'Admins' },
   { id: 'files', label: 'Data Files' },
-  { id: 'pending', label: 'Pending' },
   { id: 'config', label: 'Config' },
-  { id: 'history', label: 'History' },
+  { id: 'corrections', label: 'Corrections' },
 ]
 
 async function logout() {

@@ -1,10 +1,9 @@
-import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { applyCorrections, parseCorrectionFile, parseFile } from '../domain/parser.js'
-import type { ClockEvent } from '../domain/models.js'
+import type { ClockEvent, CorrectionItem } from '../domain/models.js'
 import { getDataRoot, loadSettings } from './settings.js'
 
-export const EDITOR_FILE = 'editor-corrections.txt'
 export const PENDING_FILE = 'pending-corrections.json'
 export const HISTORY_FILE = 'correction-history.json'
 
@@ -16,6 +15,22 @@ export function correctionsDir(): string {
   return join(getDataRoot(), 'corrections')
 }
 
+function historyItemToCorrectionItem(item: HistoryItem): CorrectionItem {
+  const ts = (s: string) => new Date(s.replace(' ', 'T'))
+  if (item.action === 'EDIT') {
+    return {
+      action: 'EDIT',
+      event: { empId: item.emp_id, name: item.name, dept: item.dept, timestamp: ts(item.new_timestamp!) },
+      oldTimestamp: ts(item.timestamp),
+    }
+  }
+  return {
+    action: item.action,
+    event: { empId: item.emp_id, name: item.name, dept: item.dept, timestamp: ts(item.timestamp) },
+    oldTimestamp: null,
+  }
+}
+
 export function loadEvents(): ClockEvent[] {
   const raw: ClockEvent[] = []
   const rd = rawDir()
@@ -24,14 +39,15 @@ export function loadEvents(): ClockEvent[] {
       raw.push(...parseFile(join(rd, f)))
     }
   }
-  const corrections: ReturnType<typeof parseCorrectionFile> = []
+  const manualCorrections: CorrectionItem[] = []
   const cd = correctionsDir()
   if (existsSync(cd)) {
-    for (const f of readdirSync(cd).filter(n => n.endsWith('.txt')).sort()) {
-      corrections.push(...parseCorrectionFile(join(cd, f)))
+    for (const f of readdirSync(cd).filter(n => n.endsWith('.txt') && n !== 'editor-corrections.txt').sort()) {
+      manualCorrections.push(...parseCorrectionFile(join(cd, f)))
     }
   }
-  return applyCorrections(raw, corrections)
+  const historyCorrections = loadHistory().filter(item => !item.undone).map(historyItemToCorrectionItem)
+  return applyCorrections(raw, [...manualCorrections, ...historyCorrections])
 }
 
 export function applyNameOverrides(events: ClockEvent[]): ClockEvent[] {
@@ -40,12 +56,6 @@ export function applyNameOverrides(events: ClockEvent[]): ClockEvent[] {
     const fullName = employees[e.empId]?.full_name?.trim()
     return fullName ? { ...e, name: fullName } : e
   })
-}
-
-export function appendCorrection(line: string): void {
-  const cd = correctionsDir()
-  mkdirSync(cd, { recursive: true })
-  appendFileSync(join(cd, EDITOR_FILE), line + '\n', 'utf-8')
 }
 
 export interface PendingItem {
@@ -143,5 +153,13 @@ export function markUndone(itemId: string): boolean {
   if (!found) return false
   found.undone = true
   saveHistory(items)
+  return true
+}
+
+export function removeHistoryItem(itemId: string): boolean {
+  const items = loadHistory()
+  const exists = items.some(x => x.id === itemId)
+  if (!exists) return false
+  saveHistory(items.filter(x => x.id !== itemId))
   return true
 }

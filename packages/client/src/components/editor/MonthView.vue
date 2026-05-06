@@ -2,7 +2,7 @@
   <div class="month-view">
     <div v-if="!dayGroups.length && !draftRow" class="empty-month">
       <span>No sessions this month.</span>
-      <button class="btn btn-primary" @click="draftRow = { date: monthPrefix + '-01', dateEditable: true }">+ Add session</button>
+      <button class="btn btn-primary" @click="draftRow = { date: defaultDraftDate(), dateEditable: true }">+ Add session</button>
     </div>
     <table v-else>
       <thead>
@@ -19,7 +19,7 @@
           <tr
             v-for="(row, idx) in group.rows"
             :key="row.original.clock_in"
-            :class="{ incomplete: row.original.incomplete, 'has-pending': hasPending(row.original), 'has-pending-del': hasPendingDel(row.original) }"
+            :class="{ incomplete: row.original.incomplete, 'has-pending': hasPending(row.original), 'has-pending-del': hasPendingDelIn(row.original) }"
           >
             <!-- Date label only on first row of day -->
             <td class="col-date">
@@ -38,12 +38,12 @@
               <template v-else>
                 <span :class="{ strikethrough: isPendingField(row.original, 'clock_in') }">{{ fmtTime(row.original.clock_in) }}</span>
                 <span v-if="isPendingField(row.original, 'clock_in')" class="pending-val">
-                  {{ fmtTime(pendingNewTs(row.original, 'clock_in')!) }}
+                  {{ fmtTime(pendingNewTs(row.original, 'clock_in') ?? '') }}
                   <span class="badge-pending">pending</span>
                   <button class="cancel-pending-btn" title="Cancel this pending correction" @click.stop="$emit('cancel-pending', { pendingId: pendingFor(row.original, 'clock_in')!.id })">✕</button>
                 </span>
                 <button
-                  v-if="!hasPendingDel(row.original)"
+                  v-if="!hasPendingDelIn(row.original)"
                   class="del-btn"
                   title="Delete this clock-in"
                   @click.stop="$emit('delete-event', { timestamp: row.original.clock_in })"
@@ -62,15 +62,22 @@
               </template>
               <template v-else>
                 <span v-if="row.original.incomplete" class="incomplete-mark" title="Click to add missing clock-out">--:--</span>
+                <template v-else-if="hasPendingDelOut(row.original)">
+                  <span class="strikethrough">{{ fmtTime(row.original.clock_out!) }}</span>
+                  <span class="pending-val">
+                    <span class="badge-pending-del">pending delete</span>
+                    <button class="cancel-pending-btn cancel-pending-del-btn" title="Cancel this pending deletion" @click.stop="$emit('cancel-pending', { pendingId: pendingForDelOut(row.original)!.id })">✕</button>
+                  </span>
+                </template>
                 <template v-else>
                   <span :class="{ strikethrough: isPendingField(row.original, 'clock_out') }">{{ fmtTime(row.original.clock_out!) }}</span>
                   <span v-if="isPendingField(row.original, 'clock_out')" class="pending-val">
-                    {{ fmtTime(pendingNewTs(row.original, 'clock_out')!) }}
+                    {{ fmtTime(pendingNewTs(row.original, 'clock_out') ?? '') }}
                     <span class="badge-pending">pending</span>
                     <button class="cancel-pending-btn" title="Cancel this pending correction" @click.stop="$emit('cancel-pending', { pendingId: pendingFor(row.original, 'clock_out')!.id })">✕</button>
                   </span>
                   <button
-                    v-if="!hasPendingDel(row.original)"
+                    v-if="!hasPendingDelIn(row.original)"
                     class="del-btn"
                     title="Delete this clock-out"
                     @click.stop="$emit('delete-event', { timestamp: row.original.clock_out! })"
@@ -84,12 +91,12 @@
 
             <!-- Actions -->
             <td class="col-actions">
-              <span v-if="hasPendingDel(row.original)" class="badge-pending-del">
+              <span v-if="hasPendingDelIn(row.original)" class="badge-pending-del">
                 pending delete
-                <button class="cancel-pending-btn cancel-pending-del-btn" title="Cancel this pending deletion" @click.stop="$emit('cancel-pending', { pendingId: pendingForDel(row.original)!.id })">✕</button>
+                <button class="cancel-pending-btn cancel-pending-del-btn" title="Cancel this pending deletion" @click.stop="$emit('cancel-pending', { pendingId: pendingForDelIn(row.original)!.id })">✕</button>
               </span>
               <button
-                v-if="idx === group.rows.length - 1"
+                v-if="idx === group.rows.length - 1 && !draftRow"
                 class="add-btn"
                 title="Add session for this day"
                 @click.stop="draftRow = { date: group.date }"
@@ -98,7 +105,7 @@
           </tr>
 
           <!-- Draft row for inline add -->
-          <tr v-if="draftRow?.date === group.date" class="draft-row">
+          <tr v-if="draftRow?.date === group.date && !draftRow.dateEditable" class="draft-row">
             <td class="col-date"></td>
             <td class="time-cell col-time">
               <TimeInput
@@ -130,7 +137,7 @@
               class="date-input"
               :value="draftRow.date"
               :min="monthPrefix + '-01'"
-              :max="monthPrefix + '-31'"
+              :max="monthPrefix + '-' + String(monthLastDay).padStart(2, '0')"
               @change="e => draftRow && (draftRow.date = (e.target as HTMLInputElement).value)"
             />
           </td>
@@ -156,7 +163,7 @@
               v-if="!draftRow"
               class="add-btn new-day-btn"
               title="Add session for a new day"
-              @click.stop="draftRow = { date: monthPrefix + '-01', dateEditable: true }"
+              @click.stop="draftRow = { date: defaultDraftDate(), dateEditable: true }"
             >+</button>
           </td>
         </tr>
@@ -191,6 +198,7 @@ const emit = defineEmits<{
 interface EffectiveRow {
   original: EventRow
   effectiveDuration: string
+  effectiveMs: number
 }
 
 interface DayGroup {
@@ -216,14 +224,16 @@ const monthPrefix = computed(() => {
   return `${y}-${m}`
 })
 
-function computeDuration(clockIn: string, clockOut: string): string {
-  const ms = new Date(clockOut.replace(' ', 'T')).getTime()
-           - new Date(clockIn.replace(' ', 'T')).getTime()
-  if (ms <= 0) return '—'
-  const h = Math.floor(ms / 3600000)
-  const m = Math.floor((ms % 3600000) / 60000)
-  return `${h}h${String(m).padStart(2, '0')}`
+const monthLastDay = computed(() => new Date(props.year, props.month, 0).getDate())
+
+function defaultDraftDate(): string {
+  const today = new Date()
+  if (today.getFullYear() === props.year && today.getMonth() + 1 === props.month) {
+    return `${monthPrefix.value}-${String(today.getDate()).padStart(2, '0')}`
+  }
+  return dayGroups.value.at(-1)?.date ?? monthPrefix.value + '-01'
 }
+
 
 function msFromDuration(clockIn: string, clockOut: string | null): number {
   if (!clockOut) return 0
@@ -254,16 +264,26 @@ function pendingFor(row: EventRow, field: 'clock_in' | 'clock_out'): PendingItem
 function hasPending(row: EventRow): boolean {
   return props.pendingItems.some(p =>
     (p.action === 'EDIT' && (p.timestamp === row.clock_in || p.timestamp === row.clock_out)) ||
-    (p.action === 'DEL' && p.timestamp === row.clock_in)
+    (p.action === 'DEL' && (p.timestamp === row.clock_in || p.timestamp === row.clock_out))
   )
 }
 
-function hasPendingDel(row: EventRow): boolean {
+function hasPendingDelIn(row: EventRow): boolean {
   return props.pendingItems.some(p => p.action === 'DEL' && p.timestamp === row.clock_in)
 }
 
-function pendingForDel(row: EventRow): PendingItem | undefined {
+function hasPendingDelOut(row: EventRow): boolean {
+  if (!row.clock_out) return false
+  return props.pendingItems.some(p => p.action === 'DEL' && p.timestamp === row.clock_out)
+}
+
+function pendingForDelIn(row: EventRow): PendingItem | undefined {
   return props.pendingItems.find(p => p.action === 'DEL' && p.timestamp === row.clock_in)
+}
+
+function pendingForDelOut(row: EventRow): PendingItem | undefined {
+  if (!row.clock_out) return undefined
+  return props.pendingItems.find(p => p.action === 'DEL' && p.timestamp === row.clock_out)
 }
 
 function pendingNewTs(row: EventRow, field: 'clock_in' | 'clock_out'): string | null {
@@ -279,10 +299,9 @@ const effectiveRows = computed<EffectiveRow[]>(() => {
       const pendingOut = pendingFor(row, 'clock_out')
       const effIn = pendingIn?.new_timestamp ?? row.clock_in
       const effOut = pendingOut?.new_timestamp ?? row.clock_out
-      const effectiveDuration = row.incomplete
-        ? '—'
-        : computeDuration(effIn, effOut ?? '')
-      return { original: row, effectiveDuration }
+      const effectiveMs = row.incomplete ? 0 : msFromDuration(effIn, effOut)
+      const effectiveDuration = row.incomplete ? '—' : fmtMs(effectiveMs)
+      return { original: row, effectiveDuration, effectiveMs }
     })
     .sort((a, b) => a.original.clock_in.localeCompare(b.original.clock_in))
 })
@@ -295,8 +314,8 @@ function formatDate(dateStr: string, fmt: string): string {
   return fmt
     .replace('YYYY', String(y))
     .replace('MM',   String(mo).padStart(2, '0'))
-    .replace('dd',   String(d).padStart(2, '0'))
     .replace('ddd',  DAY_NAMES[dow])
+    .replace('dd',   String(d).padStart(2, '0'))
 }
 
 function dayLabel(dateStr: string): string {
@@ -311,27 +330,13 @@ const dayGroups = computed<DayGroup[]>(() => {
     map.get(date)!.push(row)
   }
   return [...map.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([date, rows]) => {
-    const totalMs = rows.reduce((sum, r) => {
-      const pendingIn = pendingFor(r.original, 'clock_in')
-      const pendingOut = pendingFor(r.original, 'clock_out')
-      const effIn = pendingIn?.new_timestamp ?? r.original.clock_in
-      const effOut = pendingOut?.new_timestamp ?? r.original.clock_out
-      return sum + msFromDuration(effIn, effOut)
-    }, 0)
+    const totalMs = rows.reduce((sum, r) => sum + r.effectiveMs, 0)
     return { date, label: dayLabel(date), rows, dayTotal: fmtMs(totalMs) }
   })
 })
 
 const monthTotal = computed<string>(() => {
-  const totalMs = dayGroups.value.reduce((sum, g) => {
-    return sum + g.rows.reduce((s, r) => {
-      const pendingIn = pendingFor(r.original, 'clock_in')
-      const pendingOut = pendingFor(r.original, 'clock_out')
-      const effIn = pendingIn?.new_timestamp ?? r.original.clock_in
-      const effOut = pendingOut?.new_timestamp ?? r.original.clock_out
-      return s + msFromDuration(effIn, effOut)
-    }, 0)
-  }, 0)
+  const totalMs = effectiveRows.value.reduce((sum, r) => sum + r.effectiveMs, 0)
   return fmtMs(totalMs)
 })
 
@@ -340,6 +345,7 @@ function fmtTime(ts: string): string {
 }
 
 function startEdit(row: EventRow, field: 'clock_in' | 'clock_out') {
+  if (hasPendingDelIn(row)) return
   editing.value = { key: row.clock_in + (field === 'clock_in' ? ':in' : ':out') }
 }
 

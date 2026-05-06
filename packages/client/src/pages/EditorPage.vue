@@ -32,14 +32,11 @@
           <div class="toolbar">
             <span class="toolbar-name">{{ selectedName }}</span>
             <div class="month-nav">
-              <button class="btn btn-secondary nav-btn" @click="prevMonth">←</button>
-              <span class="month-label">{{ monthLabel }}</span>
-              <button class="btn btn-secondary nav-btn" @click="nextMonth">→</button>
+              <button class="btn btn-secondary nav-btn" @click="prevYear">←</button>
+              <span class="month-label">{{ currentYear }}</span>
+              <button class="btn btn-secondary nav-btn" @click="nextYear">→</button>
             </div>
             <div class="toolbar-actions">
-              <RouterLink v-if="reportUrl" :to="reportUrl" class="btn btn-secondary" target="_blank">
-                View report
-              </RouterLink>
               <button class="btn btn-secondary" title="Print" @click="showPrintModal = true">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
                 Print
@@ -47,18 +44,22 @@
             </div>
           </div>
 
-          <!-- Month view -->
-          <MonthView
-            :rows="currentRows"
-            :pending-items="myPending"
-            :year="currentYear"
-            :month="currentMonth"
-            @edit-cell="onEditCell"
-            @edit-cell-replace-pending="onEditCellReplacePending"
-            @add-event="onAddEvent"
-            @delete-event="onDeleteEvent"
-            @cancel-pending="onCancelPending"
-          />
+          <!-- Year view: all 12 months scrollable -->
+          <div class="year-scroll">
+            <MonthView
+              v-for="month in 12"
+              :key="`${currentYear}-${month}`"
+              :rows="currentRows"
+              :pending-items="myPending"
+              :year="currentYear"
+              :month="month"
+              @edit-cell="onEditCell"
+              @edit-cell-replace-pending="onEditCellReplacePending"
+              @add-event="onAddEvent"
+              @delete-event="onDeleteEvent"
+              @cancel-pending="onCancelPending"
+            />
+          </div>
         </template>
       </div>
     </div>
@@ -103,7 +104,6 @@ const { toast } = useToast()
 const config = ref<Config | null>(null)
 const profiles = ref<Record<string, Profile>>({})
 const events = ref<Record<string, EventRow[]>>({})
-const myReports = ref<{ stem: string; year: number; url: string }[]>([])
 const pending = ref<PendingItem[]>([])
 
 const selectedKey = ref<string | null>(null)
@@ -112,49 +112,31 @@ const showPrintModal = ref(false)
 
 const now = new Date()
 const currentYear = ref(now.getFullYear())
-const currentMonth = ref(now.getMonth() + 1)
+const currentMonth = now.getMonth() + 1
 
-const monthLabel = computed(() => {
-  return new Date(currentYear.value, currentMonth.value - 1)
-    .toLocaleString('default', { month: 'long', year: 'numeric' })
-})
-
-function prevMonth() {
-  if (currentMonth.value === 1) {
-    currentMonth.value = 12
-    currentYear.value--
-  } else {
-    currentMonth.value--
-  }
-}
-
-function nextMonth() {
-  if (currentMonth.value === 12) {
-    currentMonth.value = 1
-    currentYear.value++
-  } else {
-    currentMonth.value++
-  }
-}
+function prevYear() { currentYear.value-- }
+function nextYear() { currentYear.value++ }
 
 onMounted(async () => {
-  const [cfg, profs, evts, reports] = await Promise.all([
+  const [cfg, profs, evts, pendingItems] = await Promise.all([
     api.config(),
     api.profiles(),
     api.events(),
-    api.myReports(),
+    api.myPending(),
   ])
   config.value = cfg
   profiles.value = profs
   events.value = evts
-  myReports.value = reports
+  pending.value = pendingItems
 
   if (!cfg.is_admin && cfg.emp_id) {
-    const k = Object.keys(evts).find(k => k.startsWith(cfg.emp_id + '|'))
+    let k = Object.keys(evts).find(k => k.startsWith(cfg.emp_id + '|'))
+    if (!k) {
+      const pItem = pendingItems.find(p => String(p.emp_id) === String(cfg.emp_id))
+      if (pItem) k = `${pItem.emp_id}|${pItem.name}|${pItem.dept}`
+    }
     selectedKey.value = k ?? null
   }
-
-  pending.value = await api.myPending()
 })
 
 function keyParts(k: string) {
@@ -162,71 +144,67 @@ function keyParts(k: string) {
   return { empId, name, dept }
 }
 
-const selectedEmpId = computed(() => selectedKey.value ? keyParts(selectedKey.value).empId : '')
-const selectedName  = computed(() => selectedKey.value ? keyParts(selectedKey.value).name  : '')
+const selectedParts = computed(() => selectedKey.value ? keyParts(selectedKey.value) : null)
+const selectedEmpId = computed(() => selectedParts.value?.empId ?? '')
+const selectedName  = computed(() => selectedParts.value?.name  ?? '')
 
 const currentRows = computed<EventRow[]>(() =>
   selectedKey.value ? (events.value[selectedKey.value] ?? []) : []
 )
 
-const reportUrl = computed(() => {
-  if (!myReports.value.length || !selectedEmpId.value) return null
-  const r = myReports.value.find(r => String(r.url).includes(`-${selectedEmpId.value}-`))
-  return r?.url ?? null
-})
-
 const myPending = computed(() =>
-  pending.value.filter(p => p.emp_id === selectedEmpId.value)
+  pending.value.filter(p => String(p.emp_id) === selectedEmpId.value)
 )
 
 function selectEmployee(key: string) {
   selectedKey.value = key
 }
 
+async function refresh() {
+  events.value = await api.events()
+  pending.value = await api.myPending()
+}
+
 async function onEditCell(payload: { oldTimestamp: string; newTimestamp: string }) {
-  const { empId, name, dept } = keyParts(selectedKey.value!)
+  const { empId, name, dept } = selectedParts.value!
   try {
     const res = await api.edit({ emp_id: empId, name, dept, old_timestamp: payload.oldTimestamp, new_timestamp: payload.newTimestamp })
     toast(res.pending ? 'Submitted for approval.' : 'Saved.')
-    events.value = await api.events()
-    pending.value = await api.myPending()
+    await refresh()
   } catch (e) {
     toast(e instanceof ApiError ? e.message : 'Error saving.')
   }
 }
 
 async function onAddEvent(payload: { timestamp: string }) {
-  const { empId, name, dept } = keyParts(selectedKey.value!)
+  const { empId, name, dept } = selectedParts.value!
   try {
     const res = await api.add({ emp_id: empId, name, dept, timestamp: payload.timestamp })
     toast(res.pending ? 'Submitted for approval.' : 'Saved.')
-    events.value = await api.events()
-    pending.value = await api.myPending()
+    await refresh()
   } catch (e) {
     toast(e instanceof ApiError ? e.message : 'Error saving.')
   }
 }
 
 async function onDeleteEvent(payload: { timestamp: string }) {
-  const { empId, name, dept } = keyParts(selectedKey.value!)
+  const { empId, name, dept } = selectedParts.value!
   try {
     const res = await api.delete({ emp_id: empId, name, dept, timestamp: payload.timestamp })
     toast(res.pending ? 'Submitted for approval.' : 'Deleted.')
-    events.value = await api.events()
-    pending.value = await api.myPending()
+    await refresh()
   } catch (e) {
     toast(e instanceof ApiError ? e.message : 'Error deleting.')
   }
 }
 
 async function onEditCellReplacePending(payload: { pendingId: string; oldTimestamp: string; newTimestamp: string }) {
-  const { empId, name, dept } = keyParts(selectedKey.value!)
+  const { empId, name, dept } = selectedParts.value!
   try {
     await api.cancelMyPending(payload.pendingId)
     const res = await api.edit({ emp_id: empId, name, dept, old_timestamp: payload.oldTimestamp, new_timestamp: payload.newTimestamp })
     toast(res.pending ? 'Submitted for approval.' : 'Saved.')
-    events.value = await api.events()
-    pending.value = await api.myPending()
+    await refresh()
   } catch (e) {
     toast(e instanceof ApiError ? e.message : 'Error saving.')
   }
@@ -236,8 +214,7 @@ async function onCancelPending(payload: { pendingId: string }) {
   try {
     await api.cancelMyPending(payload.pendingId)
     toast('Correction cancelled.')
-    events.value = await api.events()
-    pending.value = await api.myPending()
+    await refresh()
   } catch (e) {
     toast(e instanceof ApiError ? e.message : 'Error cancelling.')
   }
@@ -277,6 +254,13 @@ async function logout() {
 }
 
 .nav-btn { padding: .25rem .6rem; font-size: .9rem; }
+
+.year-scroll {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
 
 .empty-state {
   display: flex; align-items: center; justify-content: center;

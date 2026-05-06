@@ -67,7 +67,12 @@
 
       <!-- Duration -->
       <div class="cell dur-cell" :style="gridAt(idx + 1, 4)">
-        <span v-if="row.original.incomplete" class="incomplete-dur">incomplete</span>
+        <template v-if="row.original.incomplete">
+          <span v-if="findPendingClockOut(row.original)" class="pending-time">
+            {{ fmtMs(msFromDuration(row.original.clock_in, findPendingClockOut(row.original)!.timestamp)) }}
+          </span>
+          <span v-else class="incomplete-dur">incomplete</span>
+        </template>
         <template v-else>{{ row.effectiveDuration }}</template>
       </div>
     </template>
@@ -141,7 +146,7 @@ import { nextTick, ref } from 'vue'
 import type { EventRow, PendingItem } from '../../api/client.js'
 import { useConfirm } from '../../composables/useConfirm.js'
 import { useClickOutside } from '../../composables/useClickOutside.js'
-import { fmtTime } from '../../utils/time.js'
+import { fmtTime, fmtMs, msFromDuration } from '../../utils/time.js'
 import EditIcon from './EditIcon.vue'
 import TimeInput from './TimeInput.vue'
 

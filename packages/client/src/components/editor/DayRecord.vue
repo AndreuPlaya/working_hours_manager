@@ -67,9 +67,7 @@
 
       <!-- Duration -->
       <div class="cell dur-cell" :style="gridAt(idx + 1, 4)">
-        <span v-if="row.pendingAddId" class="badge badge-pending">pending</span>
-        <span v-else-if="row.original.incomplete && findPendingClockOut(row.original)" class="badge badge-pending">pending</span>
-        <span v-else-if="row.original.incomplete" class="incomplete-dur">incomplete</span>
+        <span v-if="row.original.incomplete" class="incomplete-dur">incomplete</span>
         <template v-else>{{ row.effectiveDuration }}</template>
       </div>
     </template>

@@ -255,7 +255,7 @@ function findPendingClockOut(row: EventRow): PendingItem | undefined {
 
 .day-record {
   display: grid;
-  grid-template-columns: 140px 150px 150px 90px;
+  grid-template-columns: $col-date $col-group $col-group $col-dur;
   align-items: center;
   width: fit-content;
   margin: 0 auto;

@@ -12,7 +12,14 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
     credentials: 'same-origin',
   })
   const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw new ApiError(res.status, (data as any).error ?? res.statusText)
+  if (!res.ok) throw new ApiError(res.status, (data as { error?: string }).error ?? res.statusText)
+  return data as T
+}
+
+async function requestForm<T>(method: string, url: string, body: FormData): Promise<T> {
+  const res = await fetch(url, { method, body, credentials: 'same-origin' })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new ApiError(res.status, (data as { error?: string }).error ?? res.statusText)
   return data as T
 }
 
@@ -198,24 +205,18 @@ export const api = {
     updateAdmin: (username: string, password: string) => put<{ ok: boolean }>(`/api/admin/admins/${username}`, { password }),
     deleteAdmin: (username: string) => del<{ ok: boolean }>(`/api/admin/admins/${username}`),
     rawFiles: () => get<RawFile[]>('/api/admin/raw-files'),
-    uploadFile: async (file: File) => {
+    uploadFile: (file: File) => {
       const form = new FormData()
       form.append('file', file)
-      const res = await fetch('/api/admin/raw-files', { method: 'POST', body: form, credentials: 'same-origin' })
-      const data = await res.json()
-      if (!res.ok) throw new ApiError(res.status, data.error ?? res.statusText)
-      return data as { ok: boolean; name: string }
+      return requestForm<{ ok: boolean; name: string }>('POST', '/api/admin/raw-files', form)
     },
     deleteFile: (filename: string) => del<{ ok: boolean }>(`/api/admin/raw-files/${encodeURIComponent(filename)}`),
     getAppConfig: () => get<{ time_format?: string; theme?: string; favicon_ext?: string; date_format?: string }>('/api/admin/app-config'),
     updateAppConfig: (data: { time_format?: string; theme?: string; date_format?: string }) => put<{ ok: boolean }>('/api/admin/app-config', data),
-    uploadFavicon: async (file: File) => {
+    uploadFavicon: (file: File) => {
       const form = new FormData()
       form.append('favicon', file)
-      const res = await fetch('/api/admin/app-config/favicon', { method: 'POST', body: form, credentials: 'same-origin' })
-      const data = await res.json()
-      if (!res.ok) throw new ApiError(res.status, (data as any).error ?? res.statusText)
-      return data as { ok: boolean; ext: string }
+      return requestForm<{ ok: boolean; ext: string }>('POST', '/api/admin/app-config/favicon', form)
     },
     pending: () => get<PendingItem[]>('/api/admin/pending'),
     pendingPreview: (id: string) => get<{ ok: boolean } & PreviewResult>(`/api/admin/pending/${id}/preview`),

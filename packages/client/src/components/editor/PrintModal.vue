@@ -92,12 +92,8 @@ const props = defineProps<{
 
 defineEmits<{ close: [] }>()
 
-const months = [
-  { value: 1, label: 'Jan' }, { value: 2, label: 'Feb' }, { value: 3, label: 'Mar' },
-  { value: 4, label: 'Apr' }, { value: 5, label: 'May' }, { value: 6, label: 'Jun' },
-  { value: 7, label: 'Jul' }, { value: 8, label: 'Aug' }, { value: 9, label: 'Sep' },
-  { value: 10, label: 'Oct' }, { value: 11, label: 'Nov' }, { value: 12, label: 'Dec' },
-]
+const fmt = new Intl.DateTimeFormat('en', { month: 'short' })
+const months = Array.from({ length: 12 }, (_, i) => ({ value: i + 1, label: fmt.format(new Date(2000, i)) }))
 
 const availableYears = computed(() => {
   const years = new Set(props.rows.map(r => Number(r.clock_in.slice(0, 4))))

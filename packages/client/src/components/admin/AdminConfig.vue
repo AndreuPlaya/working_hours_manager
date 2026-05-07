@@ -15,7 +15,7 @@
         <h3>Color theme</h3>
         <div class="theme-row">
           <button
-            v-for="t in themes"
+            v-for="t in THEME_OPTIONS"
             :key="t.id"
             class="theme-btn"
             :class="{ active: selectedTheme === t.id }"
@@ -41,7 +41,7 @@
           <span v-else class="muted">No custom favicon set.</span>
           <label class="btn btn-secondary upload-btn">
             Upload favicon
-            <input type="file" accept=".ico,.png,.svg,.jpg,.jpeg" hidden @change="uploadFavicon" />
+            <input :key="faviconKey" type="file" accept=".ico,.png,.svg,.jpg,.jpeg" hidden @change="uploadFavicon" />
           </label>
         </div>
         <p class="hint">Accepted: .ico, .png, .svg, .jpg — refresh the page after upload to see the browser tab icon update.</p>
@@ -54,7 +54,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { api, ApiError } from '../../api/client.js'
-import { applyTheme } from '../../composables/useAppConfig.js'
+import { applyTheme, THEME_OPTIONS } from '../../utils/theme.js'
 import { useToast } from '../../composables/useToast.js'
 
 const { toast } = useToast()
@@ -65,13 +65,6 @@ const dateFormat = ref('MM/dd(ddd)')
 const selectedTheme = ref('blue')
 const faviconExt = ref<string | undefined>()
 const faviconKey = ref(0)
-
-const themes = [
-  { id: 'blue',   label: 'Blue',   color: '#2563eb' },
-  { id: 'green',  label: 'Green',  color: '#16a34a' },
-  { id: 'purple', label: 'Purple', color: '#7c3aed' },
-  { id: 'dark',   label: 'Dark',   color: '#0f172a' },
-]
 
 onMounted(async () => {
   try {
@@ -112,8 +105,9 @@ async function uploadFavicon(e: Event) {
     toast('Favicon uploaded.')
   } catch (err) {
     toast(err instanceof ApiError ? err.message : 'Error uploading favicon.')
+  } finally {
+    faviconKey.value++
   }
-  ;(e.target as HTMLInputElement).value = ''
 }
 </script>
 

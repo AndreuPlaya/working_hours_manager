@@ -41,13 +41,14 @@
 import { computed, onMounted, ref } from 'vue'
 import { api, ApiError } from '../../api/client.js'
 import type { RawFile } from '../../api/client.js'
+import { useAsyncOp } from '../../composables/useAsyncOp.js'
 import { useToast } from '../../composables/useToast.js'
 import { useConfirm } from '../../composables/useConfirm.js'
 
+const { loading, run } = useAsyncOp()
 const { toast } = useToast()
 const { confirm } = useConfirm()
 const files = ref<RawFile[]>([])
-const loading = ref(true)
 const dragging = ref(false)
 const uploadError = ref('')
 const fileInput = ref<HTMLInputElement | null>(null)
@@ -58,9 +59,7 @@ async function load() {
   files.value = await api.admin.rawFiles()
 }
 
-onMounted(async () => {
-  try { await load() } finally { loading.value = false }
-})
+onMounted(() => run(load))
 
 const sortedFiles = computed(() =>
   [...files.value].sort((a, b) => {
@@ -117,13 +116,11 @@ async function onFileInput(e: Event) {
 
 async function deleteFile(name: string) {
   if (!await confirm(`Delete ${name}?`)) return
-  try {
+  await run(async () => {
     await api.admin.deleteFile(name)
     await load()
     toast('Deleted.')
-  } catch (e) {
-    toast(e instanceof ApiError ? e.message : 'Error.')
-  }
+  })
 }
 </script>
 

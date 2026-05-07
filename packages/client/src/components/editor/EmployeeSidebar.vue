@@ -8,8 +8,8 @@
       @click="$emit('select', key)"
     >
       <span class="emp-name">{{ displayName(key) }}</span>
-      <span v-if="pendingCountFor(empIdOf(key)) > 0" class="badge badge-count">
-        {{ pendingCountFor(empIdOf(key)) }}
+      <span v-if="pendingCountFor(splitKey(key).empId) > 0" class="badge badge-count">
+        {{ pendingCountFor(splitKey(key).empId) }}
       </span>
     </div>
   </div>
@@ -27,17 +27,14 @@ const props = defineProps<{
 
 defineEmits<{ select: [key: string] }>()
 
-function empIdOf(key: string): string {
-  return key.split('|')[0]
-}
-
-function nameOf(key: string): string {
-  return key.split('|')[1]
+function splitKey(key: string): { empId: string; name: string } {
+  const [empId, name] = key.split('|')
+  return { empId, name }
 }
 
 function displayName(key: string): string {
-  const empId = empIdOf(key)
-  return props.profiles[empId]?.alias || nameOf(key)
+  const { empId, name } = splitKey(key)
+  return props.profiles[empId]?.alias || name
 }
 
 function pendingCountFor(empId: string): number {

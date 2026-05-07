@@ -16,11 +16,11 @@
 
 <script setup lang="ts">
 import { useToast } from './composables/useToast.js'
-import { useConfirm, confirmVisible, confirmMessage } from './composables/useConfirm.js'
+import { useConfirm } from './composables/useConfirm.js'
 import ConfirmModal from './components/ConfirmModal.vue'
 
 const { message, visible, undoFn, dismiss } = useToast()
-const { accept, decline } = useConfirm()
+const { accept, decline, visible: confirmVisible, message: confirmMessage } = useConfirm()
 
 function handleUndo() {
   const fn = undoFn.value

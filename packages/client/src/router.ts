@@ -25,7 +25,9 @@ router.beforeEach(async to => {
       try {
         const s = await api.auth.setupStatus()
         if (s.needs_setup) return '/setup'
-      } catch { /* ignore */ }
+      } catch (setupErr) {
+        console.error('Router setup check failed:', setupErr)
+      }
     }
     return '/login'
   }

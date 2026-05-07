@@ -45,13 +45,14 @@
 import { onMounted, reactive, ref } from 'vue'
 import { api, ApiError } from '../../api/client.js'
 import type { AdminAccount } from '../../api/client.js'
+import { useAsyncOp } from '../../composables/useAsyncOp.js'
 import { useToast } from '../../composables/useToast.js'
 import { useConfirm } from '../../composables/useConfirm.js'
 
+const { loading, run } = useAsyncOp()
 const { toast } = useToast()
 const { confirm } = useConfirm()
 const admins = ref<AdminAccount[]>([])
-const loading = ref(true)
 const passwords = reactive<Record<string, string>>({})
 const newUsername = ref('')
 const newPassword = ref('')
@@ -62,29 +63,23 @@ async function load() {
   for (const a of admins.value) passwords[a.username] ??= ''
 }
 
-onMounted(async () => {
-  try { await load() } finally { loading.value = false }
-})
+onMounted(() => run(load))
 
 async function updatePassword(username: string) {
-  try {
+  await run(async () => {
     await api.admin.updateAdmin(username, passwords[username])
     passwords[username] = ''
     toast('Password updated.')
-  } catch (e) {
-    toast(e instanceof ApiError ? e.message : 'Error.')
-  }
+  })
 }
 
 async function deleteAdmin(username: string) {
   if (!await confirm(`Delete admin "${username}"?`)) return
-  try {
+  await run(async () => {
     await api.admin.deleteAdmin(username)
     await load()
     toast('Deleted.')
-  } catch (e) {
-    toast(e instanceof ApiError ? e.message : 'Error.')
-  }
+  })
 }
 
 async function createAdmin() {

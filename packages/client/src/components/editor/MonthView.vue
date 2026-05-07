@@ -21,27 +21,14 @@
 
       <!-- Separator before first group -->
       <div v-if="!isFutureMonth" class="day-separator" @click.stop="openNewRow(-1)" />
-      <div v-if="newRowAt === -1" ref="newRowEl" class="new-session-row">
-        <div class="ns-date">
-          <input
-            ref="dateInputEl"
-            type="text"
-            class="date-draft-input"
-            :value="draftDate"
-            maxlength="5"
-            placeholder="MM/dd"
-            @keydown="onDraftDateKeyDown"
-            @input="onDraftDateInput"
-          />
-        </div>
-        <div class="ns-time">
-          <TimeInput :time="null" :auto-focus="false" @commit="v => (draftIn = v)" @cancel="() => {}" />
-        </div>
-        <div class="ns-time">
-          <TimeInput :time="null" :auto-focus="false" @commit="onDraftOutCommit" @cancel="() => {}" />
-        </div>
-        <div class="ns-dur">—</div>
-      </div>
+      <NewRowInput
+        v-if="newRowAt === -1"
+        :year="props.year"
+        :month="props.month"
+        :min-date="minDate"
+        @add="onNewRowAdd"
+        @cancel="newRowAt = null"
+      />
 
       <!-- One DayRecord per day group, each followed by a separator -->
       <template v-for="(group, idx) in dayGroups" :key="group.date">
@@ -58,27 +45,14 @@
           @cancel-pending="$emit('cancel-pending', $event)"
         />
         <div v-if="!isFutureMonth" class="day-separator" @click.stop="openNewRow(idx)" />
-        <div v-if="newRowAt === idx" ref="newRowEl" class="new-session-row">
-          <div class="ns-date">
-            <input
-              ref="dateInputEl"
-              type="text"
-              class="date-draft-input"
-              :value="draftDate"
-              maxlength="5"
-              placeholder="MM/dd"
-              @keydown="onDraftDateKeyDown"
-              @input="onDraftDateInput"
-            />
-          </div>
-          <div class="ns-time">
-            <TimeInput :time="null" :auto-focus="false" @commit="v => (draftIn = v)" @cancel="() => {}" />
-          </div>
-          <div class="ns-time">
-            <TimeInput :time="null" :auto-focus="false" @commit="onDraftOutCommit" @cancel="() => {}" />
-          </div>
-          <div class="ns-dur">—</div>
-        </div>
+        <NewRowInput
+          v-if="newRowAt === idx"
+          :year="props.year"
+          :month="props.month"
+          :min-date="minDate"
+          @add="onNewRowAdd"
+          @cancel="newRowAt = null"
+        />
       </template>
 
       <!-- Month total -->
@@ -91,14 +65,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 import type { EventRow, PendingItem } from '../../api/client.js'
 import { useAppConfig } from '../../composables/useAppConfig.js'
-import { useClickOutside } from '../../composables/useClickOutside.js'
 import { fmtMs, msFromDuration } from '../../utils/time.js'
 import { dayLabel } from '../../utils/date.js'
-import TimeInput from './TimeInput.vue'
 import DayRecord from './DayRecord.vue'
+import NewRowInput from './NewRowInput.vue'
 import type { EffectiveRow } from './DayRecord.vue'
 
 const { config: appConfig } = useAppConfig()
@@ -128,17 +101,13 @@ interface DayGroup {
 // ─── New-session row ──────────────────────────────────────────────────────────
 
 const newRowAt = ref<number | null>(null)  // -1 = before first group; idx = after group[idx]
-const newRowEl = ref<HTMLElement | null>(null)
-const dateInputEl = ref<HTMLInputElement | null>(null)
-const draftDate = ref('')
-const draftIn = ref<string | null>(null)
-const draftOut = ref<string | null>(null)
 
 function openNewRow(at: number) {
   newRowAt.value = at
-  draftDate.value = ''
-  draftIn.value = null
-  draftOut.value = null
+}
+
+function onNewRowAdd(timestamp: string) {
+  emit('add-event', { timestamp })
 }
 
 const isFutureMonth = computed(() => {
@@ -151,71 +120,11 @@ const minDate = computed(() => {
   return props.rows.reduce((min, r) => r.clock_in < min ? r.clock_in : min, props.rows[0].clock_in).slice(0, 10)
 })
 
-function nowHHMM(): string {
-  const n = new Date()
-  return `${String(n.getHours()).padStart(2, '0')}:${String(n.getMinutes()).padStart(2, '0')}`
-}
-
-function todayISO(): string {
-  const n = new Date()
-  return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`
-}
-
-function parseDraftDate(input: string): string | null {
-  const m = input.match(/^(\d{2})\/(\d{2})$/)
-  if (!m) return null
-  const mm = parseInt(m[1]), dd = parseInt(m[2])
-  if (mm < 1 || mm > 12) return null
-  const maxDay = new Date(props.year, mm, 0).getDate()
-  if (dd < 1 || dd > maxDay) return null
-  const dateStr = `${props.year}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`
-  if (dateStr > todayISO()) return null
-  if (minDate.value && dateStr < minDate.value) return null
-  return dateStr
-}
-
-function submitNewRow() {
-  const dateStr = parseDraftDate(draftDate.value)
-  newRowAt.value = null
-  if (!dateStr || !draftIn.value) return
-  const isToday = dateStr === todayISO()
-  const currentHHMM = nowHHMM()
-  if (isToday && draftIn.value > currentHHMM) return
-  emit('add-event', { timestamp: `${dateStr} ${draftIn.value}:00` })
-  if (draftOut.value && !(isToday && draftOut.value > currentHHMM)) {
-    emit('add-event', { timestamp: `${dateStr} ${draftOut.value}:00` })
-  }
-}
-
-function onDraftOutCommit(hhmm: string) {
-  draftOut.value = hhmm
-  submitNewRow()
-}
-
-function onDraftDateKeyDown(e: KeyboardEvent) {
-  if (e.key === 'Escape') { newRowAt.value = null; return }
-  if (/^\d$/.test(e.key) || ['Backspace', 'Delete', 'Tab', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return
-  e.preventDefault()
-}
-
-function onDraftDateInput(e: Event) {
-  const input = e.target as HTMLInputElement
-  const raw = input.value.replace(/\D/g, '').slice(0, 4)
-  const formatted = raw.length > 2 ? raw.slice(0, 2) + '/' + raw.slice(2) : raw
-  draftDate.value = formatted
-  input.value = formatted
-}
-
-useClickOutside(newRowEl, submitNewRow)
-
-watch(newRowAt, (val) => {
-  if (val !== null) nextTick(() => dateInputEl.value?.focus())
-})
-
 // ─── Date helpers ─────────────────────────────────────────────────────────────
 
-const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'] as const
-const monthName = computed(() => MONTH_NAMES[props.month - 1])
+const monthName = computed(() =>
+  new Intl.DateTimeFormat('en', { month: 'long' }).format(new Date(props.year, props.month - 1))
+)
 
 const monthPrefix = computed(() => {
   const y = props.year
@@ -299,10 +208,6 @@ const monthTotal = computed<string>(() => {
 <style lang="scss" scoped>
 @use '../../styles/variables' as *;
 
-// Column widths — must match DayRecord's grid-template-columns: 140px 150px 150px 90px
-$col-date:  140px;
-$col-group: 150px;
-$col-dur:    90px;
 
 .month-view {
   padding: .5rem 0 2rem;
@@ -393,56 +298,6 @@ $col-dur:    90px;
     background: $accent;
     opacity: .3;
   }
-}
-
-// ─── New-session row ──────────────────────────────────────────────────────────
-
-.new-session-row {
-  display: grid;
-  grid-template-columns: $col-date $col-group $col-group $col-dur;
-  align-items: center;
-  background: $border-light;
-  margin: 0 auto;
-  width: fit-content;
-}
-
-.ns-date {
-  display: flex;
-  align-items: center;
-  padding: .25rem .65rem;
-  min-height: 30px;
-}
-
-.ns-time {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: .25rem .5rem;
-  min-height: 30px;
-}
-
-.ns-dur {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: .25rem .5rem;
-  font-family: $font-mono;
-  font-size: .82rem;
-  color: $text-muted;
-  min-height: 30px;
-}
-
-.date-draft-input {
-  font-size: .82rem;
-  font-family: $font-mono;
-  border: 1px solid $input-border;
-  border-radius: 3px;
-  padding: .15rem .3rem;
-  background: $card;
-  color: $text;
-  width: 60px;
-  text-align: center;
-  &:focus { outline: none; border-color: $accent; }
 }
 
 // ─── Month total ──────────────────────────────────────────────────────────────

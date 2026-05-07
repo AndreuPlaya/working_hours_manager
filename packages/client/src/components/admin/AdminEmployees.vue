@@ -51,8 +51,9 @@
 
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
-import { api, ApiError } from '../../api/client.js'
+import { api } from '../../api/client.js'
 import type { Employee } from '../../api/client.js'
+import { useAsyncOp } from '../../composables/useAsyncOp.js'
 import { useToast } from '../../composables/useToast.js'
 
 interface EmployeeEdit {
@@ -64,34 +65,30 @@ interface EmployeeEdit {
   enabled: boolean
 }
 
+const { loading, run } = useAsyncOp()
 const { toast } = useToast()
 const employees = ref<Employee[]>([])
-const loading = ref(true)
 const edits = reactive<Record<string, EmployeeEdit>>({})
 const showPw = reactive<Record<string, boolean>>({})
 
-onMounted(async () => {
-  try {
-    employees.value = await api.admin.employees()
-    for (const emp of employees.value) {
-      edits[emp.emp_id] = {
-        alias: emp.alias,
-        full_name: emp.full_name,
-        email: emp.email ?? '',
-        username: emp.username,
-        password: '',
-        enabled: emp.enabled,
-      }
-      showPw[emp.emp_id] = false
+onMounted(() => run(async () => {
+  employees.value = await api.admin.employees()
+  for (const emp of employees.value) {
+    edits[emp.emp_id] = {
+      alias: emp.alias,
+      full_name: emp.full_name,
+      email: emp.email ?? '',
+      username: emp.username,
+      password: '',
+      enabled: emp.enabled,
     }
-  } finally {
-    loading.value = false
+    showPw[emp.emp_id] = false
   }
-})
+}))
 
 async function save(empId: string) {
   const d = edits[empId]
-  try {
+  await run(async () => {
     await api.admin.updateEmployee(empId, {
       alias: d.alias,
       full_name: d.full_name,
@@ -103,9 +100,7 @@ async function save(empId: string) {
     d.password = ''
     showPw[empId] = false
     toast('Saved.')
-  } catch (e) {
-    toast(e instanceof ApiError ? e.message : 'Error saving.')
-  }
+  })
 }
 </script>
 

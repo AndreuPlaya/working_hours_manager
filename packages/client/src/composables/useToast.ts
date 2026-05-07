@@ -1,5 +1,7 @@
 import { ref } from 'vue'
 
+const TOAST_MS = 4500
+
 const message = ref('')
 const visible = ref(false)
 const undoFn = ref<(() => void) | null>(null)
@@ -11,7 +13,7 @@ export function useToast() {
     visible.value = true
     undoFn.value = options?.onUndo ?? null
     if (timer) clearTimeout(timer)
-    timer = setTimeout(() => { visible.value = false }, 4500)
+    timer = setTimeout(() => { visible.value = false }, TOAST_MS)
   }
 
   function dismiss() {

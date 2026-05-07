@@ -13,3 +13,12 @@ $border:       var(--border, #e2e8f0);
 $border-light: var(--border-light, #f1f5f9);
 $selected-bg:  #eff6ff;
 $input-border: #cbd5e1;
+
+// ─── Typography ───────────────────────────────────────────────────────────────
+$font-mono: 'IBM Plex Mono', monospace;
+$font-ui:   'Syne', system-ui, sans-serif;
+
+// ─── Border radius scale ──────────────────────────────────────────────────────
+$radius-sm:  3px;
+$radius-md:  6px;
+$radius-lg: 10px;

@@ -2,7 +2,7 @@
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-body { font-family: system-ui, sans-serif; background: $bg; color: $text; }
+body { font-family: $font-ui; background: $bg; color: $text; }
 
 header {
   background: $accent; color: #fff;
@@ -40,7 +40,16 @@ input, select {
   background: $text; color: #fff; padding: .6rem 1rem;
   border-radius: .375rem; font-size: .82rem; opacity: 0;
   transition: opacity .3s; z-index: 200; pointer-events: none;
+  display: flex; align-items: center; gap: .75rem;
   &.show { opacity: 1; }
+  &.has-undo { pointer-events: auto; }
+}
+
+.toast-undo-btn {
+  background: none; border: 1px solid rgba(255,255,255,.35); color: #fff;
+  border-radius: 3px; font-size: .78rem; padding: .1rem .45rem;
+  cursor: pointer; font-family: inherit; flex-shrink: 0;
+  &:hover { background: rgba(255,255,255,.15); }
 }
 
 .modal-overlay {

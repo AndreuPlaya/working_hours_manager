@@ -1,182 +1,105 @@
 <template>
   <div class="month-view">
-    <div v-if="!dayGroups.length && !draftRow" class="empty-month">
-      <span>No sessions this month.</span>
-      <button class="btn btn-primary" @click="draftRow = { date: defaultDraftDate(), dateEditable: true }">+ Add session</button>
+    <!-- Month name header -->
+    <div class="month-header">{{ monthName }}</div>
+
+    <div v-if="!dayGroups.length && newRowAt === null" class="empty-month">
+      No sessions<template v-if="!isFutureMonth"> — <button class="add-link" @click.stop="openNewRow(-1)">+ Add</button></template>
     </div>
-    <table v-else>
-      <thead>
-        <tr>
-          <th class="col-date">Date</th>
-          <th class="col-time">Clock In</th>
-          <th class="col-time">Clock Out</th>
-          <th class="col-dur">Duration</th>
-          <th class="col-actions"></th>
-        </tr>
-      </thead>
-      <tbody>
-        <template v-for="group in dayGroups" :key="group.date">
-          <tr
-            v-for="(row, idx) in group.rows"
-            :key="row.original.clock_in"
-            :class="{ incomplete: row.original.incomplete, 'has-pending': hasPending(row.original), 'has-pending-del': hasPendingDelIn(row.original) }"
-          >
-            <!-- Date label only on first row of day -->
-            <td class="col-date">
-              <span v-if="idx === 0" class="date-label">{{ group.label }}</span>
-            </td>
 
-            <!-- Clock In -->
-            <td class="time-cell col-time" @click="startEdit(row.original, 'clock_in')">
-              <template v-if="editing?.key === row.original.clock_in + ':in'">
-                <TimeInput
-                  :time="row.original.clock_in.slice(11)"
-                  @commit="v => commitClockIn(row.original, v)"
-                  @cancel="editing = null"
-                />
-              </template>
-              <template v-else>
-                <span :class="{ strikethrough: isPendingField(row.original, 'clock_in') }">{{ fmtTime(row.original.clock_in) }}</span>
-                <span v-if="isPendingField(row.original, 'clock_in')" class="pending-val">
-                  {{ fmtTime(pendingNewTs(row.original, 'clock_in') ?? '') }}
-                  <span class="badge-pending">pending</span>
-                  <button class="cancel-pending-btn" title="Cancel this pending correction" @click.stop="$emit('cancel-pending', { pendingId: pendingFor(row.original, 'clock_in')!.id })">✕</button>
-                </span>
-                <button
-                  v-if="!hasPendingDelIn(row.original)"
-                  class="del-btn"
-                  title="Delete this clock-in"
-                  @click.stop="$emit('delete-event', { timestamp: row.original.clock_in })"
-                >✕</button>
-              </template>
-            </td>
+    <template v-if="dayGroups.length > 0 || newRowAt !== null">
+      <!-- Column headers -->
+      <div class="records-header">
+        <div class="hcol hcol-date">Date</div>
+        <div class="hcol hcol-group">Clock In</div>
+        <div class="hcol hcol-group">Clock Out</div>
+        <div class="hcol hcol-dur">Duration</div>
+      </div>
 
-            <!-- Clock Out -->
-            <td class="time-cell col-time" @click="startEdit(row.original, 'clock_out')">
-              <template v-if="editing?.key === row.original.clock_in + ':out'">
-                <TimeInput
-                  :time="row.original.clock_out ? row.original.clock_out.slice(11) : null"
-                  @commit="v => commitClockOut(row.original, v)"
-                  @cancel="editing = null"
-                />
-              </template>
-              <template v-else>
-                <span v-if="row.original.incomplete" class="incomplete-mark" title="Click to add missing clock-out">--:--</span>
-                <template v-else-if="hasPendingDelOut(row.original)">
-                  <span class="strikethrough">{{ fmtTime(row.original.clock_out!) }}</span>
-                  <span class="pending-val">
-                    <span class="badge-pending-del">pending delete</span>
-                    <button class="cancel-pending-btn cancel-pending-del-btn" title="Cancel this pending deletion" @click.stop="$emit('cancel-pending', { pendingId: pendingForDelOut(row.original)!.id })">✕</button>
-                  </span>
-                </template>
-                <template v-else>
-                  <span :class="{ strikethrough: isPendingField(row.original, 'clock_out') }">{{ fmtTime(row.original.clock_out!) }}</span>
-                  <span v-if="isPendingField(row.original, 'clock_out')" class="pending-val">
-                    {{ fmtTime(pendingNewTs(row.original, 'clock_out') ?? '') }}
-                    <span class="badge-pending">pending</span>
-                    <button class="cancel-pending-btn" title="Cancel this pending correction" @click.stop="$emit('cancel-pending', { pendingId: pendingFor(row.original, 'clock_out')!.id })">✕</button>
-                  </span>
-                  <button
-                    v-if="!hasPendingDelIn(row.original)"
-                    class="del-btn"
-                    title="Delete this clock-out"
-                    @click.stop="$emit('delete-event', { timestamp: row.original.clock_out! })"
-                  >✕</button>
-                </template>
-              </template>
-            </td>
+      <!-- Spacer: breathing room below header -->
+      <div class="records-spacer" />
 
-            <!-- Duration (effective = with pending applied) -->
-            <td class="col-dur">{{ row.effectiveDuration }}</td>
+      <!-- Separator before first group -->
+      <div v-if="!isFutureMonth" class="day-separator" @click.stop="openNewRow(-1)" />
+      <div v-if="newRowAt === -1" ref="newRowEl" class="new-session-row">
+        <div class="ns-date">
+          <input
+            ref="dateInputEl"
+            type="text"
+            class="date-draft-input"
+            :value="draftDate"
+            maxlength="5"
+            placeholder="MM/dd"
+            @keydown="onDraftDateKeyDown"
+            @input="onDraftDateInput"
+          />
+        </div>
+        <div class="ns-time">
+          <TimeInput :time="null" :auto-focus="false" @commit="v => (draftIn = v)" @cancel="() => {}" />
+        </div>
+        <div class="ns-time">
+          <TimeInput :time="null" :auto-focus="false" @commit="onDraftOutCommit" @cancel="() => {}" />
+        </div>
+        <div class="ns-dur">—</div>
+      </div>
 
-            <!-- Actions -->
-            <td class="col-actions">
-              <span v-if="hasPendingDelIn(row.original)" class="badge-pending-del">
-                pending delete
-                <button class="cancel-pending-btn cancel-pending-del-btn" title="Cancel this pending deletion" @click.stop="$emit('cancel-pending', { pendingId: pendingForDelIn(row.original)!.id })">✕</button>
-              </span>
-              <button
-                v-if="idx === group.rows.length - 1 && !draftRow"
-                class="add-btn"
-                title="Add session for this day"
-                @click.stop="draftRow = { date: group.date }"
-              >+</button>
-            </td>
-          </tr>
-
-          <!-- Draft row for inline add -->
-          <tr v-if="draftRow?.date === group.date && !draftRow.dateEditable" class="draft-row">
-            <td class="col-date"></td>
-            <td class="time-cell col-time">
-              <TimeInput
-                :time="null"
-                @commit="v => commitDraft(group.date, v)"
-                @cancel="draftRow = null"
-              />
-            </td>
-            <td class="col-time"><span class="incomplete-mark">--:--</span></td>
-            <td class="col-dur">—</td>
-            <td class="col-actions"></td>
-          </tr>
-
-          <!-- Day subtotal row: only when a day has more than one session -->
-          <tr v-if="group.rows.length > 1" class="subtotal-row">
-            <td class="col-date"></td>
-            <td colspan="2" class="subtotal-label">Day total</td>
-            <td class="col-dur">{{ group.dayTotal }}</td>
-            <td class="col-actions"></td>
-          </tr>
-        </template>
-
-        <!-- Draft row for empty month or new day (no existing day groups match) -->
-        <tr v-if="draftRow && (!dayGroups.length || draftRow.dateEditable)" ref="draftRowEl" class="draft-row">
-          <td class="col-date">
+      <!-- One DayRecord per day group, each followed by a separator -->
+      <template v-for="(group, idx) in dayGroups" :key="group.date">
+        <DayRecord
+          :label="group.label"
+          :date="group.date"
+          :rows="group.rows"
+          :day-total="group.dayTotal"
+          :pending-items="pendingItems"
+          @edit-cell="$emit('edit-cell', $event)"
+          @edit-cell-replace-pending="$emit('edit-cell-replace-pending', $event)"
+          @add-event="$emit('add-event', $event)"
+          @delete-event="$emit('delete-event', $event)"
+          @cancel-pending="$emit('cancel-pending', $event)"
+        />
+        <div v-if="!isFutureMonth" class="day-separator" @click.stop="openNewRow(idx)" />
+        <div v-if="newRowAt === idx" ref="newRowEl" class="new-session-row">
+          <div class="ns-date">
             <input
-              v-if="draftRow.dateEditable"
-              type="date"
-              class="date-input"
-              :value="draftRow.date"
-              :min="monthPrefix + '-01'"
-              :max="monthPrefix + '-' + String(monthLastDay).padStart(2, '0')"
-              @change="e => draftRow && (draftRow.date = (e.target as HTMLInputElement).value)"
+              ref="dateInputEl"
+              type="text"
+              class="date-draft-input"
+              :value="draftDate"
+              maxlength="5"
+              placeholder="MM/dd"
+              @keydown="onDraftDateKeyDown"
+              @input="onDraftDateInput"
             />
-          </td>
-          <td class="time-cell col-time">
-            <TimeInput
-              :time="null"
-              @commit="v => commitDraft(draftRow!.date, v)"
-              @cancel="onDraftCancel"
-            />
-          </td>
-          <td class="col-time"><span class="incomplete-mark">--:--</span></td>
-          <td class="col-dur">—</td>
-          <td class="col-actions"></td>
-        </tr>
-      </tbody>
-      <tfoot>
-        <tr class="month-total-row">
-          <td class="col-date"></td>
-          <td colspan="2" class="total-label">Month total</td>
-          <td class="col-dur">{{ monthTotal }}</td>
-          <td class="col-actions">
-            <button
-              v-if="!draftRow"
-              class="add-btn new-day-btn"
-              title="Add session for a new day"
-              @click.stop="draftRow = { date: defaultDraftDate(), dateEditable: true }"
-            >+</button>
-          </td>
-        </tr>
-      </tfoot>
-    </table>
+          </div>
+          <div class="ns-time">
+            <TimeInput :time="null" :auto-focus="false" @commit="v => (draftIn = v)" @cancel="() => {}" />
+          </div>
+          <div class="ns-time">
+            <TimeInput :time="null" :auto-focus="false" @commit="onDraftOutCommit" @cancel="() => {}" />
+          </div>
+          <div class="ns-dur">—</div>
+        </div>
+      </template>
+
+      <!-- Month total -->
+      <div v-if="dayGroups.length > 0" class="month-total-row">
+        <span class="month-total-label">Month total</span>
+        <span class="month-total-dur">{{ monthTotal }}</span>
+      </div>
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import type { EventRow, PendingItem } from '../../api/client.js'
 import { useAppConfig } from '../../composables/useAppConfig.js'
+import { useClickOutside } from '../../composables/useClickOutside.js'
+import { fmtMs, msFromDuration } from '../../utils/time.js'
+import { dayLabel } from '../../utils/date.js'
 import TimeInput from './TimeInput.vue'
+import DayRecord from './DayRecord.vue'
+import type { EffectiveRow } from './DayRecord.vue'
 
 const { config: appConfig } = useAppConfig()
 
@@ -195,12 +118,6 @@ const emit = defineEmits<{
   'cancel-pending': [payload: { pendingId: string }]
 }>()
 
-interface EffectiveRow {
-  original: EventRow
-  effectiveDuration: string
-  effectiveMs: number
-}
-
 interface DayGroup {
   date: string
   label: string
@@ -208,15 +125,97 @@ interface DayGroup {
   dayTotal: string
 }
 
-const editing = ref<{ key: string } | null>(null)
-const draftRow = ref<{ date: string; dateEditable?: boolean } | null>(null)
-const draftRowEl = ref<HTMLTableRowElement | null>(null)
+// ─── New-session row ──────────────────────────────────────────────────────────
 
-async function onDraftCancel() {
-  await nextTick()
-  if (draftRowEl.value?.contains(document.activeElement)) return
-  draftRow.value = null
+const newRowAt = ref<number | null>(null)  // -1 = before first group; idx = after group[idx]
+const newRowEl = ref<HTMLElement | null>(null)
+const dateInputEl = ref<HTMLInputElement | null>(null)
+const draftDate = ref('')
+const draftIn = ref<string | null>(null)
+const draftOut = ref<string | null>(null)
+
+function openNewRow(at: number) {
+  newRowAt.value = at
+  draftDate.value = ''
+  draftIn.value = null
+  draftOut.value = null
 }
+
+const isFutureMonth = computed(() => {
+  const n = new Date()
+  return props.year > n.getFullYear() || (props.year === n.getFullYear() && props.month > n.getMonth() + 1)
+})
+
+const minDate = computed(() => {
+  if (!props.rows.length) return null
+  return props.rows.reduce((min, r) => r.clock_in < min ? r.clock_in : min, props.rows[0].clock_in).slice(0, 10)
+})
+
+function nowHHMM(): string {
+  const n = new Date()
+  return `${String(n.getHours()).padStart(2, '0')}:${String(n.getMinutes()).padStart(2, '0')}`
+}
+
+function todayISO(): string {
+  const n = new Date()
+  return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`
+}
+
+function parseDraftDate(input: string): string | null {
+  const m = input.match(/^(\d{2})\/(\d{2})$/)
+  if (!m) return null
+  const mm = parseInt(m[1]), dd = parseInt(m[2])
+  if (mm < 1 || mm > 12) return null
+  const maxDay = new Date(props.year, mm, 0).getDate()
+  if (dd < 1 || dd > maxDay) return null
+  const dateStr = `${props.year}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`
+  if (dateStr > todayISO()) return null
+  if (minDate.value && dateStr < minDate.value) return null
+  return dateStr
+}
+
+function submitNewRow() {
+  const dateStr = parseDraftDate(draftDate.value)
+  newRowAt.value = null
+  if (!dateStr || !draftIn.value) return
+  const isToday = dateStr === todayISO()
+  const currentHHMM = nowHHMM()
+  if (isToday && draftIn.value > currentHHMM) return
+  emit('add-event', { timestamp: `${dateStr} ${draftIn.value}:00` })
+  if (draftOut.value && !(isToday && draftOut.value > currentHHMM)) {
+    emit('add-event', { timestamp: `${dateStr} ${draftOut.value}:00` })
+  }
+}
+
+function onDraftOutCommit(hhmm: string) {
+  draftOut.value = hhmm
+  submitNewRow()
+}
+
+function onDraftDateKeyDown(e: KeyboardEvent) {
+  if (e.key === 'Escape') { newRowAt.value = null; return }
+  if (/^\d$/.test(e.key) || ['Backspace', 'Delete', 'Tab', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return
+  e.preventDefault()
+}
+
+function onDraftDateInput(e: Event) {
+  const input = e.target as HTMLInputElement
+  const raw = input.value.replace(/\D/g, '').slice(0, 4)
+  const formatted = raw.length > 2 ? raw.slice(0, 2) + '/' + raw.slice(2) : raw
+  draftDate.value = formatted
+  input.value = formatted
+}
+
+useClickOutside(newRowEl, submitNewRow)
+
+watch(newRowAt, (val) => {
+  if (val !== null) nextTick(() => dateInputEl.value?.focus())
+})
+
+// ─── Date helpers ─────────────────────────────────────────────────────────────
+
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'] as const
+const monthName = computed(() => MONTH_NAMES[props.month - 1])
 
 const monthPrefix = computed(() => {
   const y = props.year
@@ -224,36 +223,7 @@ const monthPrefix = computed(() => {
   return `${y}-${m}`
 })
 
-const monthLastDay = computed(() => new Date(props.year, props.month, 0).getDate())
-
-function defaultDraftDate(): string {
-  const today = new Date()
-  if (today.getFullYear() === props.year && today.getMonth() + 1 === props.month) {
-    return `${monthPrefix.value}-${String(today.getDate()).padStart(2, '0')}`
-  }
-  return dayGroups.value.at(-1)?.date ?? monthPrefix.value + '-01'
-}
-
-
-function msFromDuration(clockIn: string, clockOut: string | null): number {
-  if (!clockOut) return 0
-  const ms = new Date(clockOut.replace(' ', 'T')).getTime()
-           - new Date(clockIn.replace(' ', 'T')).getTime()
-  return ms > 0 ? ms : 0
-}
-
-function fmtMs(ms: number): string {
-  if (ms <= 0) return '—'
-  const h = Math.floor(ms / 3600000)
-  const m = Math.floor((ms % 3600000) / 60000)
-  return `${h}h${String(m).padStart(2, '0')}`
-}
-
-function isPendingField(row: EventRow, field: 'clock_in' | 'clock_out'): boolean {
-  const ts = field === 'clock_in' ? row.clock_in : row.clock_out
-  if (!ts) return false
-  return props.pendingItems.some(p => p.action === 'EDIT' && p.timestamp === ts)
-}
+// ─── Data helpers ─────────────────────────────────────────────────────────────
 
 function pendingFor(row: EventRow, field: 'clock_in' | 'clock_out'): PendingItem | undefined {
   const ts = field === 'clock_in' ? row.clock_in : row.clock_out
@@ -261,34 +231,11 @@ function pendingFor(row: EventRow, field: 'clock_in' | 'clock_out'): PendingItem
   return props.pendingItems.find(p => p.action === 'EDIT' && p.timestamp === ts)
 }
 
-function hasPending(row: EventRow): boolean {
-  return props.pendingItems.some(p =>
-    (p.action === 'EDIT' && (p.timestamp === row.clock_in || p.timestamp === row.clock_out)) ||
-    (p.action === 'DEL' && (p.timestamp === row.clock_in || p.timestamp === row.clock_out))
-  )
+function localDayLabel(dateStr: string): string {
+  return dayLabel(dateStr, appConfig.value.date_format || 'MM/dd(ddd)')
 }
 
-function hasPendingDelIn(row: EventRow): boolean {
-  return props.pendingItems.some(p => p.action === 'DEL' && p.timestamp === row.clock_in)
-}
-
-function hasPendingDelOut(row: EventRow): boolean {
-  if (!row.clock_out) return false
-  return props.pendingItems.some(p => p.action === 'DEL' && p.timestamp === row.clock_out)
-}
-
-function pendingForDelIn(row: EventRow): PendingItem | undefined {
-  return props.pendingItems.find(p => p.action === 'DEL' && p.timestamp === row.clock_in)
-}
-
-function pendingForDelOut(row: EventRow): PendingItem | undefined {
-  if (!row.clock_out) return undefined
-  return props.pendingItems.find(p => p.action === 'DEL' && p.timestamp === row.clock_out)
-}
-
-function pendingNewTs(row: EventRow, field: 'clock_in' | 'clock_out'): string | null {
-  return pendingFor(row, field)?.new_timestamp ?? null
-}
+// ─── Computed data ────────────────────────────────────────────────────────────
 
 const effectiveRows = computed<EffectiveRow[]>(() => {
   const prefix = monthPrefix.value
@@ -300,38 +247,46 @@ const effectiveRows = computed<EffectiveRow[]>(() => {
       const effIn = pendingIn?.new_timestamp ?? row.clock_in
       const effOut = pendingOut?.new_timestamp ?? row.clock_out
       const effectiveMs = row.incomplete ? 0 : msFromDuration(effIn, effOut)
-      const effectiveDuration = row.incomplete ? '—' : fmtMs(effectiveMs)
-      return { original: row, effectiveDuration, effectiveMs }
+      return { original: row, effectiveDuration: fmtMs(effectiveMs), effectiveMs }
     })
     .sort((a, b) => a.original.clock_in.localeCompare(b.original.clock_in))
 })
 
-const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-
-function formatDate(dateStr: string, fmt: string): string {
-  const [y, mo, d] = dateStr.split('-').map(Number)
-  const dow = new Date(y, mo - 1, d).getDay()
-  return fmt
-    .replace('YYYY', String(y))
-    .replace('MM',   String(mo).padStart(2, '0'))
-    .replace('ddd',  DAY_NAMES[dow])
-    .replace('dd',   String(d).padStart(2, '0'))
-}
-
-function dayLabel(dateStr: string): string {
-  return formatDate(dateStr, appConfig.value.date_format || 'MM/dd(ddd)')
-}
-
 const dayGroups = computed<DayGroup[]>(() => {
+  const prefix = monthPrefix.value
   const map = new Map<string, EffectiveRow[]>()
+
   for (const row of effectiveRows.value) {
     const date = row.original.clock_in.slice(0, 10)
     if (!map.has(date)) map.set(date, [])
     map.get(date)!.push(row)
   }
+
+  // Pending ADD items show as synthetic orange rows
+  for (const p of props.pendingItems) {
+    if (p.action !== 'ADD') continue
+    if (!p.timestamp.startsWith(prefix)) continue
+    const date = p.timestamp.slice(0, 10)
+
+    // Skip pending ADD if it's likely a clock_out for an incomplete session
+    const dayRows = map.get(date)
+    const hasIncomplete = dayRows?.some(r => r.original.incomplete && r.original.clock_out === null)
+    if (hasIncomplete) continue
+
+    if (!map.has(date)) map.set(date, [])
+    map.get(date)!.push({
+      original: { date, clock_in: p.timestamp, clock_out: null, duration: null, incomplete: true },
+      effectiveDuration: '—',
+      effectiveMs: 0,
+      pendingAddId: p.id,
+    })
+  }
+
   return [...map.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([date, rows]) => {
-    const totalMs = rows.reduce((sum, r) => sum + r.effectiveMs, 0)
-    return { date, label: dayLabel(date), rows, dayTotal: fmtMs(totalMs) }
+    const totalMs = rows
+      .filter(r => !r.pendingAddId)
+      .reduce((sum, r) => sum + r.effectiveMs, 0)
+    return { date, label: localDayLabel(date), rows, dayTotal: fmtMs(totalMs) }
   })
 })
 
@@ -339,232 +294,186 @@ const monthTotal = computed<string>(() => {
   const totalMs = effectiveRows.value.reduce((sum, r) => sum + r.effectiveMs, 0)
   return fmtMs(totalMs)
 })
-
-function fmtTime(ts: string): string {
-  return ts.slice(11, 16)
-}
-
-function startEdit(row: EventRow, field: 'clock_in' | 'clock_out') {
-  if (hasPendingDelIn(row)) return
-  editing.value = { key: row.clock_in + (field === 'clock_in' ? ':in' : ':out') }
-}
-
-function commitClockIn(row: EventRow, hhmm: string) {
-  if (!editing.value) return
-  editing.value = null
-  const newTs = row.clock_in.slice(0, 10) + ' ' + hhmm + ':00'
-  if (newTs === row.clock_in) return
-  const pending = pendingFor(row, 'clock_in')
-  if (pending) {
-    emit('edit-cell-replace-pending', { pendingId: pending.id, oldTimestamp: row.clock_in, newTimestamp: newTs })
-  } else {
-    emit('edit-cell', { oldTimestamp: row.clock_in, newTimestamp: newTs })
-  }
-}
-
-function commitClockOut(row: EventRow, hhmm: string) {
-  if (!editing.value) return
-  editing.value = null
-  // Use existing clock_out date if present, otherwise use clock_in date
-  const date = row.clock_out ? row.clock_out.slice(0, 10) : row.clock_in.slice(0, 10)
-  const newTs = date + ' ' + hhmm + ':00'
-  // Adding a missing clock-out on an incomplete session
-  if (!row.clock_out) {
-    emit('add-event', { timestamp: newTs })
-    return
-  }
-  if (newTs === row.clock_out) return
-  const pending = pendingFor(row, 'clock_out')
-  if (pending) {
-    emit('edit-cell-replace-pending', { pendingId: pending.id, oldTimestamp: row.clock_out, newTimestamp: newTs })
-  } else {
-    emit('edit-cell', { oldTimestamp: row.clock_out, newTimestamp: newTs })
-  }
-}
-
-function commitDraft(date: string, hhmm: string) {
-  draftRow.value = null
-  emit('add-event', { timestamp: date + ' ' + hhmm + ':00' })
-}
 </script>
 
 <style lang="scss" scoped>
 @use '../../styles/variables' as *;
 
+// Column widths — must match DayRecord's grid-template-columns: 140px 150px 150px 90px
+$col-date:  140px;
+$col-group: 150px;
+$col-dur:    90px;
+
 .month-view {
-  flex: 1;
-  overflow: auto;
-  padding: .5rem 0;
+  padding: .5rem 0 2rem;
+}
+
+// ─── Month header ─────────────────────────────────────────────────────────────
+
+.month-header {
+  font-family: $font-ui;
+  font-size: 1rem;
+  font-weight: 700;
+  color: $text;
+  letter-spacing: .02em;
+  padding: .75rem .65rem .5rem;
+  width: fit-content;
+  margin: 0 auto;
+  min-width: calc($col-date + $col-group * 2 + $col-dur);
+  border-bottom: 1.5px solid $border-light;
+  margin-bottom: .1rem;
 }
 
 .empty-month {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 1rem;
-  padding: 3rem 2rem;
+  gap: .5rem;
+  padding: .35rem .65rem .75rem;
   color: $text-muted;
-  font-size: .875rem;
+  font-size: .8rem;
+  width: fit-content;
+  margin: 0 auto;
 }
 
-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: .85rem;
-
-  th, td {
-    padding: .4rem .65rem;
-    text-align: left;
-    border-bottom: 1px solid $border-light;
-  }
-
-  th {
-    font-weight: 600;
-    color: $text-muted;
-    font-size: .75rem;
-    text-transform: uppercase;
-    background: $bg;
-    position: sticky;
-    top: 0;
-    z-index: 1;
-  }
-
-  tbody tr:hover td { background: $border-light; }
-  tbody tr.incomplete td { color: $warning; }
-  tbody tr.has-pending td { background: #fffbeb; }
-  tbody tr.has-pending:hover td { background: #fef3c7; }
-  tbody tr.has-pending-del td { background: #fff1f2; text-decoration: line-through; opacity: .7; }
-  tbody tr.has-pending-del:hover td { background: #ffe4e6; }
-  tbody tr.draft-row td { background: $border-light; }
-}
-
-.col-date  { width: 110px; }
-.col-time  { width: 140px; }
-.col-dur   { width: 90px; }
-.col-actions { width: 70px; text-align: right; white-space: nowrap; }
-
-.date-label { font-weight: 500; color: $text-label; }
-
-.time-cell {
-  cursor: pointer;
-}
-
-.incomplete-mark { color: $warning; font-weight: 600; font-size: .8rem; letter-spacing: .04em; }
-
-.strikethrough { text-decoration: line-through; opacity: .6; }
-
-.pending-val {
-  font-size: .78rem;
-  margin-left: .35rem;
-  color: $warning;
-}
-
-.badge-pending {
-  display: inline-block;
-  font-size: .65rem;
-  background: #fef3c7;
-  border: 1px solid #fbbf24;
-  color: #92400e;
-  border-radius: 3px;
-  padding: 0 .3rem;
-  vertical-align: middle;
-  margin-left: .2rem;
-}
-
-.badge-pending-del {
-  display: inline-block;
-  font-size: .65rem;
-  background: #ffe4e6;
-  border: 1px solid #fca5a5;
-  color: #991b1b;
-  border-radius: 3px;
-  padding: 0 .3rem;
-  vertical-align: middle;
-}
-
-.subtotal-row td {
-  font-weight: 600;
-  font-size: .82rem;
-  border-top: 1px solid $border;
-  background: $bg;
-  color: $text-label;
-}
-
-tfoot .month-total-row td {
-  font-weight: 700;
-  font-size: .85rem;
-  border-top: 2px solid $border;
-  background: $bg;
-  color: $text-label;
-  padding-top: .6rem;
-  padding-bottom: .6rem;
-}
-.subtotal-label, .total-label { color: $text-label; }
-
-.add-btn {
+.add-link {
   background: none;
-  border: 1px solid $border;
-  border-radius: 3px;
+  border: none;
   cursor: pointer;
   color: $accent;
   font-size: .8rem;
-  padding: .1rem .4rem;
-  opacity: 0;
-  transition: opacity .15s;
-  tr:hover & { opacity: 1; }
-  &:hover { background: $selected-bg; }
+  padding: 0;
+  font-family: inherit;
+  &:hover { text-decoration: underline; }
 }
 
-.new-day-btn {
-  opacity: 1;
-  tfoot tr:hover & { opacity: 1; }
+// ─── Spacer ───────────────────────────────────────────────────────────────────
+
+.records-spacer {
+  height: .75rem;
 }
 
-.del-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: $danger;
+// ─── Column headers ───────────────────────────────────────────────────────────
+
+.records-header {
+  display: grid;
+  grid-template-columns: $col-date $col-group $col-group $col-dur;
+  background: $bg;
+  border-bottom: 1px solid $border-light;
+  margin: 0 auto;
+  width: fit-content;
+}
+
+.hcol {
+  padding: .35rem .5rem;
+  font-family: $font-ui;
   font-size: .7rem;
-  padding: 0 .2rem;
-  margin-left: .2rem;
-  opacity: 0;
-  transition: opacity .15s;
-  vertical-align: middle;
-  line-height: 1;
-  tr:hover & { opacity: 1; }
-  &:hover { color: $danger-dark; }
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: $text-muted;
+  text-align: center;
+
+  &.hcol-date { padding-left: .65rem; text-align: left; }
+  &.hcol-dur  { text-align: center; }
 }
 
-.cancel-pending-btn {
-  background: none;
-  border: none;
+// ─── Day separator ────────────────────────────────────────────────────────────
+
+.day-separator {
+  height: 2px;
+  width: calc($col-date + $col-group * 2 + $col-dur);
+  margin: 0 auto;
   cursor: pointer;
-  color: #92400e;
-  font-size: .6rem;
-  padding: 0 .15rem;
-  margin-left: .1rem;
-  opacity: 0;
-  transition: opacity .15s;
-  vertical-align: middle;
-  line-height: 1;
-  tr:hover & { opacity: 1; }
-  &:hover { color: $danger; }
+  background: $border-light;
+  border-radius: 2px;
+  transition: height .12s, background .12s, opacity .12s;
+
+  &:hover {
+    height: 6px;
+    background: $accent;
+    opacity: .3;
+  }
 }
 
-.cancel-pending-del-btn {
-  color: #991b1b;
+// ─── New-session row ──────────────────────────────────────────────────────────
+
+.new-session-row {
+  display: grid;
+  grid-template-columns: $col-date $col-group $col-group $col-dur;
+  align-items: center;
+  background: $border-light;
+  margin: 0 auto;
+  width: fit-content;
 }
 
-.date-input {
-  font-size: .8rem;
+.ns-date {
+  display: flex;
+  align-items: center;
+  padding: .25rem .65rem;
+  min-height: 30px;
+}
+
+.ns-time {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: .25rem .5rem;
+  min-height: 30px;
+}
+
+.ns-dur {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: .25rem .5rem;
+  font-family: $font-mono;
+  font-size: .82rem;
+  color: $text-muted;
+  min-height: 30px;
+}
+
+.date-draft-input {
+  font-size: .82rem;
+  font-family: $font-mono;
   border: 1px solid $input-border;
   border-radius: 3px;
   padding: .15rem .3rem;
   background: $card;
   color: $text;
-  width: 100%;
-  max-width: 105px;
+  width: 60px;
+  text-align: center;
   &:focus { outline: none; border-color: $accent; }
+}
+
+// ─── Month total ──────────────────────────────────────────────────────────────
+
+.month-total-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: .65rem;
+  padding: .6rem .85rem;
+  border-top: 2px solid $border;
+  font-family: $font-ui;
+  font-weight: 700;
+  font-size: .95rem;
+  color: $text-label;
+  width: calc($col-date + $col-group * 2 + $col-dur);
+  margin: 0 auto;
+}
+
+.month-total-label {
+  font-weight: 400;
+  font-size: .88rem;
+  color: $text-muted;
+  margin-right: auto;
+  padding-left: .15rem;
+}
+
+.month-total-dur {
+  font-family: $font-mono;
+  font-variant-numeric: tabular-nums;
+  min-width: 48px;
+  text-align: right;
 }
 </style>

@@ -32,9 +32,9 @@
           <div class="toolbar">
             <span class="toolbar-name">{{ selectedName }}</span>
             <div class="month-nav">
-              <button class="btn btn-secondary nav-btn" @click="prevYear">←</button>
+              <button class="btn btn-secondary nav-btn" :disabled="minYear !== null && currentYear <= minYear" @click="prevYear">←</button>
               <span class="month-label">{{ currentYear }}</span>
-              <button class="btn btn-secondary nav-btn" @click="nextYear">→</button>
+              <button class="btn btn-secondary nav-btn" :disabled="currentYear >= thisYear" @click="nextYear">→</button>
             </div>
             <div class="toolbar-actions">
               <button class="btn btn-secondary" title="Print" @click="showPrintModal = true">
@@ -47,7 +47,7 @@
           <!-- Year view: all 12 months scrollable -->
           <div class="year-scroll">
             <MonthView
-              v-for="month in 12"
+              v-for="month in visibleMonths"
               :key="`${currentYear}-${month}`"
               :rows="currentRows"
               :pending-items="myPending"
@@ -113,9 +113,42 @@ const showPrintModal = ref(false)
 const now = new Date()
 const currentYear = ref(now.getFullYear())
 const currentMonth = now.getMonth() + 1
+const thisYear = now.getFullYear()
 
-function prevYear() { currentYear.value-- }
-function nextYear() { currentYear.value++ }
+const minYear = computed(() => {
+  if (!currentRows.value.length) return null
+  const minTs = currentRows.value.reduce((min, r) => r.clock_in < min ? r.clock_in : min, currentRows.value[0].clock_in)
+  return parseInt(minTs.slice(0, 4))
+})
+
+const visibleMonths = computed<number[]>(() => {
+  const yearPrefix = String(currentYear.value)
+  const timestamps = [
+    ...currentRows.value.map(r => r.clock_in),
+    ...myPending.value.map(p => p.timestamp),
+  ].filter(ts => ts.startsWith(yearPrefix))
+
+  if (!timestamps.length) {
+    return currentYear.value === thisYear ? [currentMonth] : []
+  }
+
+  const months = timestamps.map(ts => parseInt(ts.slice(5, 7)))
+  const minMonth = Math.min(...months)
+  const maxMonth = currentYear.value === thisYear
+    ? Math.max(Math.max(...months), currentMonth)
+    : Math.max(...months)
+
+  return Array.from({ length: maxMonth - minMonth + 1 }, (_, i) => minMonth + i)
+})
+
+function prevYear() {
+  if (minYear.value !== null && currentYear.value <= minYear.value) return
+  currentYear.value--
+}
+function nextYear() {
+  if (currentYear.value >= thisYear) return
+  currentYear.value++
+}
 
 onMounted(async () => {
   const [cfg, profs, evts, pendingItems] = await Promise.all([
@@ -169,8 +202,15 @@ async function onEditCell(payload: { oldTimestamp: string; newTimestamp: string 
   const { empId, name, dept } = selectedParts.value!
   try {
     const res = await api.edit({ emp_id: empId, name, dept, old_timestamp: payload.oldTimestamp, new_timestamp: payload.newTimestamp })
-    toast(res.pending ? 'Submitted for approval.' : 'Saved.')
     await refresh()
+    let onUndo: (() => void) | undefined
+    if (res.pending) {
+      const p = myPending.value.find(p => p.action === 'EDIT' && p.timestamp === payload.oldTimestamp)
+      if (p) onUndo = () => { api.cancelMyPending(p.id).then(refresh) }
+    } else {
+      onUndo = () => onEditCell({ oldTimestamp: payload.newTimestamp, newTimestamp: payload.oldTimestamp })
+    }
+    toast(res.pending ? 'Submitted for approval.' : 'Saved.', { onUndo })
   } catch (e) {
     toast(e instanceof ApiError ? e.message : 'Error saving.')
   }
@@ -180,8 +220,15 @@ async function onAddEvent(payload: { timestamp: string }) {
   const { empId, name, dept } = selectedParts.value!
   try {
     const res = await api.add({ emp_id: empId, name, dept, timestamp: payload.timestamp })
-    toast(res.pending ? 'Submitted for approval.' : 'Saved.')
     await refresh()
+    let onUndo: (() => void) | undefined
+    if (res.pending) {
+      const p = myPending.value.find(p => p.action === 'ADD' && p.timestamp === payload.timestamp)
+      if (p) onUndo = () => { api.cancelMyPending(p.id).then(refresh) }
+    } else {
+      onUndo = () => onDeleteEvent({ timestamp: payload.timestamp })
+    }
+    toast(res.pending ? 'Submitted for approval.' : 'Saved.', { onUndo })
   } catch (e) {
     toast(e instanceof ApiError ? e.message : 'Error saving.')
   }
@@ -191,8 +238,15 @@ async function onDeleteEvent(payload: { timestamp: string }) {
   const { empId, name, dept } = selectedParts.value!
   try {
     const res = await api.delete({ emp_id: empId, name, dept, timestamp: payload.timestamp })
-    toast(res.pending ? 'Submitted for approval.' : 'Deleted.')
     await refresh()
+    let onUndo: (() => void) | undefined
+    if (res.pending) {
+      const p = myPending.value.find(p => p.action === 'DEL' && p.timestamp === payload.timestamp)
+      if (p) onUndo = () => { api.cancelMyPending(p.id).then(refresh) }
+    } else {
+      onUndo = () => onAddEvent({ timestamp: payload.timestamp })
+    }
+    toast(res.pending ? 'Submitted for approval.' : 'Deleted.', { onUndo })
   } catch (e) {
     toast(e instanceof ApiError ? e.message : 'Error deleting.')
   }
@@ -253,7 +307,7 @@ async function logout() {
   .month-label { font-size: .9rem; font-weight: 500; min-width: 130px; text-align: center; }
 }
 
-.nav-btn { padding: .25rem .6rem; font-size: .9rem; }
+.nav-btn { padding: .25rem .6rem; font-size: .9rem; &:disabled { opacity: .35; cursor: default; } }
 
 .year-scroll {
   flex: 1;

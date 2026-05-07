@@ -20,6 +20,7 @@ export interface AppConfig {
   theme?: string
   favicon_ext?: string
   date_format?: string
+  time_format?: '24h' | '12h'
 }
 
 export interface Settings {

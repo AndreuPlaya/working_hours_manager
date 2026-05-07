@@ -66,7 +66,18 @@
       "Bash(node_modules/.bin/tsc -p packages/server/tsconfig.json --noEmit)",
       "Bash(pnpm exec *)",
       "Bash(packages/server/node_modules/.bin/tsc -p packages/server/tsconfig.json --noEmit)",
-      "Bash(packages/client/node_modules/.bin/vue-tsc -p packages/client/tsconfig.json --noEmit)"
+      "Bash(packages/client/node_modules/.bin/vue-tsc -p packages/client/tsconfig.json --noEmit)",
+      "Bash(pnpm --filter client exec tsc --noEmit)",
+      "Bash(pnpm --filter client build)",
+      "Bash(pnpm dev:server)",
+      "Bash(curl -s http://localhost:5000/api/auth/config -H \"Cookie: token=invalid\")",
+      "Bash(cat)",
+      "Bash(chmod +x /tmp/test-login.sh)",
+      "Bash(bash /tmp/test-login.sh)",
+      "Bash(pnpm build *)",
+      "Bash(git commit -m ' *)",
+      "Read(//tmp/**)",
+      "Bash(pnpm --filter client exec vue-tsc --noEmit)"
     ]
   }
 }

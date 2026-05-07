@@ -80,6 +80,8 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type { EventRow } from '../../api/client.js'
+import { fmtMs, msFromDuration } from '../../utils/time.js'
+import { dayLabel } from '../../utils/date.js'
 
 const props = defineProps<{
   rows: EventRow[]
@@ -124,24 +126,7 @@ function filteredRows() {
 }
 
 function msFromRow(r: EventRow): number {
-  if (!r.clock_out || r.incomplete) return 0
-  const ms = new Date(r.clock_out.replace(' ', 'T')).getTime()
-           - new Date(r.clock_in.replace(' ', 'T')).getTime()
-  return ms > 0 ? ms : 0
-}
-
-function fmtMs(ms: number): string {
-  if (ms <= 0) return '—'
-  const h = Math.floor(ms / 3600000)
-  const m = Math.floor((ms % 3600000) / 60000)
-  return `${h}h${String(m).padStart(2, '0')}`
-}
-
-const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-function dayLabel(dateStr: string): string {
-  const [y, mo, d] = dateStr.split('-').map(Number)
-  const dow = new Date(y, mo - 1, d).getDay()
-  return `${String(mo).padStart(2, '0')}/${String(d).padStart(2, '0')}(${DAY_NAMES[dow]})`
+  return msFromDuration(r.clock_in, r.incomplete ? null : r.clock_out)
 }
 
 const monthGroups = computed(() => {

@@ -127,7 +127,7 @@ admin.post('/api/admin/pending/:id/reject', c => {
 admin.get('/api/admin/history', c => c.json(getHistory()))
 
 admin.post('/api/admin/history/:id/undo', c => {
-  if (!undoCorrection(c.req.param('id'), c.get('user').username)) {
+  if (!undoCorrection(c.req.param('id'))) {
     return c.json({ ok: false, error: 'Item not found or already undone.' }, 404)
   }
   return c.json({ ok: true })

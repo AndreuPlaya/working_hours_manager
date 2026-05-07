@@ -46,7 +46,7 @@ export function loadEvents(): ClockEvent[] {
       manualCorrections.push(...parseCorrectionFile(join(cd, f)))
     }
   }
-  const historyCorrections = loadHistory().filter(item => !item.undone).map(historyItemToCorrectionItem)
+  const historyCorrections = loadHistory().map(historyItemToCorrectionItem)
   return applyCorrections(raw, [...manualCorrections, ...historyCorrections])
 }
 
@@ -116,7 +116,6 @@ export interface HistoryItem {
   new_timestamp: string | null
   applied_at: string
   applied_by: string
-  undone: boolean
 }
 
 function historyPath(): string {
@@ -145,15 +144,6 @@ export function addToHistory(item: HistoryItem): void {
   const items = loadHistory()
   items.push(item)
   saveHistory(items)
-}
-
-export function markUndone(itemId: string): boolean {
-  const items = loadHistory()
-  const found = items.find(x => x.id === itemId)
-  if (!found) return false
-  found.undone = true
-  saveHistory(items)
-  return true
 }
 
 export function removeHistoryItem(itemId: string): boolean {

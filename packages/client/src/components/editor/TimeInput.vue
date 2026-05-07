@@ -17,6 +17,7 @@ import { onMounted, ref } from 'vue'
 
 const props = defineProps<{
   time: string | null
+  autoFocus?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -29,8 +30,10 @@ const inputEl = ref<HTMLInputElement | null>(null)
 const display = ref(props.time ? props.time.slice(0, 5) : '')
 
 onMounted(() => {
-  inputEl.value?.focus()
-  inputEl.value?.select()
+  if (props.autoFocus !== false) {
+    inputEl.value?.focus()
+    inputEl.value?.select()
+  }
 })
 
 function onKeyDown(e: KeyboardEvent) {
@@ -82,18 +85,18 @@ function onBlur() {
 
 <style scoped>
 .time-input {
-  font-size: .8rem;
-  padding: .15rem .35rem;
-  width: 60px;
-  border: 1px solid var(--border, #e2e8f0);
-  border-radius: 3px;
-  background: var(--card, #fff);
-  color: var(--text, #1e293b);
+  font-size: .95rem;
   font-family: inherit;
+  font-variant-numeric: tabular-nums;
+  color: var(--text, #1e293b);
+  background: transparent;
+  border: none;
+  border-bottom: 1.5px solid var(--accent, #2563eb);
+  border-radius: 0;
+  outline: none;
+  padding: 0 .1rem;
+  width: 52px;
   text-align: center;
-  &:focus {
-    outline: none;
-    border-color: var(--accent, #2563eb);
-  }
+  caret-color: var(--accent, #2563eb);
 }
 </style>

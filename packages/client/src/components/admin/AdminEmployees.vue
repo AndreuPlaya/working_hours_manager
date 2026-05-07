@@ -3,7 +3,17 @@
     <div v-if="loading" class="muted">Loading…</div>
     <table v-else>
       <thead>
-        <tr><th>ID</th><th>Name (raw)</th><th>Alias</th><th>Full name</th><th>Email</th><th>Username</th><th>Password</th><th>Status</th><th></th></tr>
+        <tr>
+          <th>ID</th>
+          <th>Name (raw)</th>
+          <th>Alias</th>
+          <th>Full name</th>
+          <th>Email</th>
+          <th>Username</th>
+          <th>Password</th>
+          <th>Status</th>
+          <th></th>
+        </tr>
       </thead>
       <tbody>
         <tr v-for="emp in employees" :key="emp.emp_id">
@@ -14,7 +24,12 @@
           <td><input type="email" v-model="edits[emp.emp_id].email" /></td>
           <td><input v-model="edits[emp.emp_id].username" /></td>
           <td>
-            <input v-if="showPw[emp.emp_id]" type="password" v-model="edits[emp.emp_id].password" placeholder="New password" />
+            <input
+              v-if="showPw[emp.emp_id]"
+              type="password"
+              v-model="edits[emp.emp_id].password"
+              placeholder="New password"
+            />
             <button v-else class="btn btn-secondary sm" @click="showPw[emp.emp_id] = true">
               {{ emp.has_password ? 'Change' : 'Set' }}
             </button>
@@ -40,26 +55,51 @@ import { api, ApiError } from '../../api/client.js'
 import type { Employee } from '../../api/client.js'
 import { useToast } from '../../composables/useToast.js'
 
+interface EmployeeEdit {
+  alias: string
+  full_name: string
+  email: string
+  username: string
+  password: string
+  enabled: boolean
+}
+
 const { toast } = useToast()
 const employees = ref<Employee[]>([])
 const loading = ref(true)
-const edits = reactive<Record<string, { alias: string; full_name: string; email: string; username: string; password: string; enabled: boolean }>>({})
+const edits = reactive<Record<string, EmployeeEdit>>({})
 const showPw = reactive<Record<string, boolean>>({})
 
 onMounted(async () => {
   try {
     employees.value = await api.admin.employees()
     for (const emp of employees.value) {
-      edits[emp.emp_id] = { alias: emp.alias, full_name: emp.full_name, email: emp.email ?? '', username: emp.username, password: '', enabled: emp.enabled }
+      edits[emp.emp_id] = {
+        alias: emp.alias,
+        full_name: emp.full_name,
+        email: emp.email ?? '',
+        username: emp.username,
+        password: '',
+        enabled: emp.enabled,
+      }
       showPw[emp.emp_id] = false
     }
-  } finally { loading.value = false }
+  } finally {
+    loading.value = false
+  }
 })
 
 async function save(empId: string) {
+  const d = edits[empId]
   try {
-    const d = edits[empId]
-    await api.admin.updateEmployee(empId, { alias: d.alias, full_name: d.full_name, email: d.email, username: d.username, enabled: d.enabled, ...(d.password ? { password: d.password } : {}) })
+    await api.admin.updateEmployee(empId, {
+      alias: d.alias,
+      full_name: d.full_name,
+      email: d.email,
+      username: d.username,
+      enabled: d.enabled,
+      ...(d.password ? { password: d.password } : {}),
+    })
     d.password = ''
     showPw[empId] = false
     toast('Saved.')
@@ -71,12 +111,44 @@ async function save(empId: string) {
 
 <style lang="scss" scoped>
 @use '../../styles/variables' as *;
-.panel { padding: 1.25rem; overflow-x: auto; }
-table { width: 100%; border-collapse: collapse; font-size: .83rem;
-  th, td { padding: .4rem .5rem; text-align: left; border-bottom: 1px solid $border; }
-  th { font-weight: 600; color: $text-muted; font-size: .72rem; text-transform: uppercase; }
+
+.panel {
+  padding: 1.25rem;
+  overflow-x: auto;
 }
-input, select { font-size: .83rem; }
-.btn.sm { padding: .25rem .55rem; font-size: .78rem; }
-.muted { color: $text-muted; font-size: .875rem; }
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .83rem;
+
+  th,
+  td {
+    padding: .4rem .5rem;
+    text-align: left;
+    border-bottom: 1px solid $border;
+  }
+
+  th {
+    font-weight: 600;
+    color: $text-muted;
+    font-size: .72rem;
+    text-transform: uppercase;
+  }
+}
+
+input,
+select {
+  font-size: .83rem;
+}
+
+.btn.sm {
+  padding: .25rem .55rem;
+  font-size: .78rem;
+}
+
+.muted {
+  color: $text-muted;
+  font-size: .875rem;
+}
 </style>

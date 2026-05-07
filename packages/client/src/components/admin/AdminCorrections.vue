@@ -7,8 +7,8 @@
         <option value="pending">Pending</option>
         <option value="approved">Approved</option>
       </select>
-      <input type="date" v-model="filterFrom" title="From date" />
-      <input type="date" v-model="filterTo" title="To date" />
+      <input type="text" v-model="filterFrom" placeholder="YYYY/MM/DD" class="date-filter" />
+      <input type="text" v-model="filterTo" placeholder="YYYY/MM/DD" class="date-filter" />
       <button class="btn btn-secondary sm" @click="clearFilters">Clear</button>
     </div>
 
@@ -30,7 +30,9 @@
         <template v-for="item in filteredItems" :key="item.id">
           <tr>
             <td>{{ item.name }}</td>
-            <td><span class="badge" :class="badgeClass(item.action)">{{ item.action }}</span></td>
+            <td>
+              <span class="badge" :class="badgeClass(item.action)">{{ item.action }}</span>
+            </td>
             <td class="change-cell">
               <template v-if="item.action === 'EDIT'">
                 <span class="ts">{{ item.timestamp.slice(0, 19) }}</span>
@@ -65,11 +67,17 @@
               <div v-else class="preview-grid">
                 <div>
                   <h4>Before</h4>
-                  <PreviewTable :rows="previews[item.id]!.before.rows" :total="previews[item.id]!.before.month_total" />
+                  <PreviewTable
+                    :rows="previews[item.id]!.before.rows as any"
+                    :total="previews[item.id]!.before.month_total"
+                  />
                 </div>
                 <div>
                   <h4>After</h4>
-                  <PreviewTable :rows="previews[item.id]!.after.rows" :total="previews[item.id]!.after.month_total" />
+                  <PreviewTable
+                    :rows="previews[item.id]!.after.rows as any"
+                    :total="previews[item.id]!.after.month_total"
+                  />
                 </div>
               </div>
             </td>
@@ -85,9 +93,13 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { api, ApiError } from '../../api/client.js'
 import type { CorrectionItem, PreviewResult } from '../../api/client.js'
 import { useToast } from '../../composables/useToast.js'
+import { useConfirm } from '../../composables/useConfirm.js'
+import PreviewTable from './PreviewTable.vue'
+
+const { confirm } = useConfirm()
+const { toast } = useToast()
 
 const emit = defineEmits<{ count: [n: number] }>()
-const { toast } = useToast()
 
 const allItems = ref<CorrectionItem[]>([])
 const loading = ref(true)
@@ -113,16 +125,20 @@ async function load() {
   emit('count', pending.length)
 }
 
-onMounted(async () => { try { await load() } finally { loading.value = false } })
+onMounted(async () => {
+  try { await load() } finally { loading.value = false }
+})
+
+const normalizeDate = (s: string) => s.replace(/\//g, '-')
 
 const filteredItems = computed(() =>
   allItems.value
     .filter(item => {
       if (filterStatus.value && item.status !== filterStatus.value) return false
       if (filterEmp.value && !item.name.toLowerCase().includes(filterEmp.value.toLowerCase())) return false
-      const d = sortDate(item).slice(0, 10)
-      if (filterFrom.value && d < filterFrom.value) return false
-      if (filterTo.value && d > filterTo.value) return false
+      const d = (item.timestamp ?? '').slice(0, 10)
+      if (filterFrom.value && d < normalizeDate(filterFrom.value)) return false
+      if (filterTo.value && d > normalizeDate(filterTo.value)) return false
       return true
     })
     .sort((a, b) => sortDate(b).localeCompare(sortDate(a)))
@@ -161,7 +177,7 @@ async function approve(id: string) {
 }
 
 async function reject(id: string) {
-  if (!confirm('Reject this correction?')) return
+  if (!await confirm('Reject this correction?')) return
   try {
     await api.admin.rejectPending(id)
     openPreviews.delete(id)
@@ -172,73 +188,127 @@ async function reject(id: string) {
 }
 
 async function revert(id: string) {
-  if (!confirm('Revert this correction? The change will be permanently removed.')) return
+  if (!await confirm('Revert this correction? The change will be permanently removed.')) return
   try {
     await api.admin.revertCorrection(id)
     await load()
     toast('Correction reverted.')
   } catch (e) { toast(e instanceof ApiError ? e.message : 'Error.') }
 }
-
-const PreviewTable = {
-  props: ['rows', 'total'],
-  template: `
-    <table class="prev-table">
-      <thead><tr><th>Date</th><th>In</th><th>Out</th><th>Duration</th></tr></thead>
-      <tbody>
-        <tr v-for="(r, i) in rows" :key="i" :class="{ subtotal: r.is_subtotal, affected: r.affected }">
-          <td>{{ r.date_label }}</td><td>{{ r.clock_in }}</td><td>{{ r.clock_out }}</td><td>{{ r.duration }}</td>
-        </tr>
-      </tbody>
-      <tfoot><tr><td colspan="3">Month total</td><td>{{ total }}</td></tr></tfoot>
-    </table>
-  `,
-}
 </script>
 
 <style lang="scss" scoped>
 @use '../../styles/variables' as *;
 
-.panel { padding: 1.25rem; overflow-x: auto; }
+.panel {
+  padding: 1.25rem;
+  overflow-x: auto;
+}
 
 .filters {
-  display: flex; gap: .5rem; margin-bottom: 1rem; flex-wrap: wrap; align-items: center;
-  input, select { width: auto; min-width: 120px; }
+  display: flex;
+  gap: .5rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+  align-items: center;
+
+  input,
+  select {
+    width: auto;
+    min-width: 120px;
+  }
+
+  input.date-filter {
+    width: 110px;
+    min-width: unset;
+    font-size: .83rem;
+  }
 }
 
 table {
-  width: 100%; border-collapse: collapse; font-size: .83rem;
-  th, td { padding: .4rem .5rem; text-align: left; border-bottom: 1px solid $border; }
-  th { font-weight: 600; color: $text-muted; font-size: .72rem; text-transform: uppercase; }
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .83rem;
+
+  th,
+  td {
+    padding: .4rem .5rem;
+    text-align: left;
+    border-bottom: 1px solid $border;
+  }
+
+  th {
+    font-weight: 600;
+    color: $text-muted;
+    font-size: .72rem;
+    text-transform: uppercase;
+  }
 }
 
-.change-cell { white-space: nowrap; }
-.ts { font-variant-numeric: tabular-nums; font-size: .8rem; }
-.arrow { margin: 0 .3rem; color: $text-muted; }
+.change-cell {
+  white-space: nowrap;
+}
+
+.ts {
+  font-variant-numeric: tabular-nums;
+  font-size: .8rem;
+}
+
+.arrow {
+  margin: 0 .3rem;
+  color: $text-muted;
+}
 
 .status-badge {
-  display: inline-block; padding: .15rem .45rem; border-radius: .25rem; font-size: .72rem; font-weight: 600;
-  &.status-pending { background: #fef3c7; color: #92400e; }
-  &.status-approved { background: #f1f5f9; color: #475569; }
+  display: inline-block;
+  padding: .15rem .45rem;
+  border-radius: .25rem;
+  font-size: .72rem;
+  font-weight: 600;
+
+  &.status-pending {
+    background: #fef3c7;
+    color: #92400e;
+  }
+
+  &.status-approved {
+    background: #f1f5f9;
+    color: #475569;
+  }
 }
 
-.row-actions { display: flex; gap: .4rem; white-space: nowrap; }
-.btn.sm { padding: .25rem .55rem; font-size: .78rem; }
+.row-actions {
+  display: flex;
+  gap: .4rem;
+  white-space: nowrap;
+}
 
-.preview-row td { background: $border-light; padding: 1rem; }
+.btn.sm {
+  padding: .25rem .55rem;
+  font-size: .78rem;
+}
+
+.preview-row td {
+  background: $border-light;
+  padding: 1rem;
+}
+
 .preview-grid {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;
-  h4 { font-size: .8rem; font-weight: 600; margin-bottom: .5rem; color: $text-muted; text-transform: uppercase; }
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+
+  h4 {
+    font-size: .8rem;
+    font-weight: 600;
+    margin-bottom: .5rem;
+    color: $text-muted;
+    text-transform: uppercase;
+  }
 }
 
-:deep(.prev-table) {
-  width: 100%; border-collapse: collapse; font-size: .78rem;
-  th, td { padding: .3rem .4rem; border-bottom: 1px solid $border; }
-  th { font-weight: 600; color: $text-muted; font-size: .7rem; text-transform: uppercase; }
-  tr.subtotal td { font-weight: 600; }
-  tr.affected td { background: #fef9c3; }
-  tfoot td { font-weight: 600; border-top: 1px solid $border; }
+.muted {
+  color: $text-muted;
+  font-size: .875rem;
 }
-
-.muted { color: $text-muted; font-size: .875rem; }
 </style>

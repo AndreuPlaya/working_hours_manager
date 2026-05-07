@@ -61,19 +61,45 @@ async function logout() {
 <style lang="scss" scoped>
 @use '../styles/variables' as *;
 
-.admin-layout { display: flex; flex-direction: column; min-height: 100vh; }
+.admin-layout {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
 
 .tabs {
-  display: flex; border-bottom: 1px solid $border; padding: 0 1rem; background: $card;
+  display: flex;
+  border-bottom: 1px solid $border;
+  padding: 0 1rem;
+  background: $card;
 }
 
 .tab-btn {
-  padding: .75rem 1rem; font-size: .875rem; font-weight: 500; cursor: pointer;
-  border: none; background: none; color: $text-muted; border-bottom: 2px solid transparent;
-  display: flex; align-items: center; gap: .4rem; margin-bottom: -1px;
-  &.active { color: $accent; border-bottom-color: $accent; }
-  &:hover:not(.active) { color: $text; }
+  padding: .75rem 1rem;
+  font-size: .875rem;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  background: none;
+  color: $text-muted;
+  border-bottom: 2px solid transparent;
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  margin-bottom: -1px;
+
+  &.active {
+    color: $accent;
+    border-bottom-color: $accent;
+  }
+
+  &:hover:not(.active) {
+    color: $text;
+  }
 }
 
-.tab-content { flex: 1; overflow: auto; }
+.tab-content {
+  flex: 1;
+  overflow: auto;
+}
 </style>

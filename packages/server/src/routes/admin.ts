@@ -1,27 +1,21 @@
-import { mkdirSync, writeFileSync } from 'fs'
-import { join } from 'path'
 import { Hono } from 'hono'
 import { approvePending, getPending, getHistory, rejectPending, undoCorrection, revertCorrection } from '../application/correctionService.js'
 import { deleteRawFile, listRawFiles, saveRawFile } from '../application/fileService.js'
 import { getEmployeeList, getPendingPreview } from '../application/reportService.js'
 import { createAdmin, deleteAdmin, ERR_MISSING, ERR_NOT_FOUND, listAdmins, updateAdminPassword, updateEmployee } from '../application/userService.js'
+import { getAppConfig, saveFavicon, updateAppConfig } from '../application/appConfigService.js'
 import { adminMiddleware, authMiddleware } from '../middleware/auth.js'
-import { getDataRoot, loadAppConfig, saveAppConfig } from '../infrastructure/settings.js'
 
 const admin = new Hono()
 
 admin.use('/api/admin/*', authMiddleware, adminMiddleware)
 
 // App configuration
-admin.get('/api/admin/app-config', c => c.json(loadAppConfig()))
+admin.get('/api/admin/app-config', c => c.json(getAppConfig()))
 
 admin.put('/api/admin/app-config', async c => {
   const body = await c.req.json<{ time_format?: string; theme?: string; date_format?: string }>()
-  const cfg = loadAppConfig()
-  if (body.time_format === '24h' || body.time_format === '12h') cfg.time_format = body.time_format
-  if (typeof body.theme === 'string') cfg.theme = body.theme.trim() || undefined
-  if (typeof body.date_format === 'string') cfg.date_format = body.date_format.trim() || undefined
-  saveAppConfig(cfg)
+  updateAppConfig(body)
   return c.json({ ok: true })
 })
 
@@ -30,14 +24,10 @@ admin.post('/api/admin/app-config/favicon', async c => {
   const file = body['favicon']
   /* v8 ignore next */ if (!file || typeof file === 'string') return c.json({ ok: false, error: 'No file provided.' }, 400)
   const ext = ((file as File).name ?? '').split('.').pop()?.toLowerCase() ?? ''
-  if (!['ico', 'png', 'svg', 'jpg', 'jpeg'].includes(ext)) return c.json({ ok: false, error: 'Unsupported file type.' }, 400)
-  const dir = join(getDataRoot(), 'config')
-  mkdirSync(dir, { recursive: true })
-  writeFileSync(join(dir, `favicon.${ext}`), Buffer.from(await (file as File).arrayBuffer()))
-  const cfg = loadAppConfig()
-  cfg.favicon_ext = ext
-  saveAppConfig(cfg)
-  return c.json({ ok: true, ext })
+  const buffer = Buffer.from(await (file as File).arrayBuffer())
+  const result = saveFavicon(buffer, ext)
+  if (!result.ok) return c.json({ ok: false, error: result.error }, 400)
+  return c.json({ ok: true, ext: result.ext })
 })
 
 // Employees

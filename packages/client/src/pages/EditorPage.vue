@@ -88,8 +88,9 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { api, ApiError } from '../api/client.js'
-import type { Config, EventRow, PendingItem, Profile } from '../api/client.js'
+import type { EventRow } from '../api/client.js'
 import { useToast } from '../composables/useToast.js'
+import { useEditorData } from '../composables/useEditorData.js'
 import EmployeeSidebar from '../components/editor/EmployeeSidebar.vue'
 import MonthView from '../components/editor/MonthView.vue'
 import ProfileModal from '../components/editor/ProfileModal.vue'
@@ -100,11 +101,11 @@ useAppConfig()
 
 const router = useRouter()
 const { toast } = useToast()
-
-const config = ref<Config | null>(null)
-const profiles = ref<Record<string, Profile>>({})
-const events = ref<Record<string, EventRow[]>>({})
-const pending = ref<PendingItem[]>([])
+const {
+  config, profiles, events, pending,
+  load, refresh, reloadConfig,
+  submitEdit, submitAdd, submitDelete, cancelPending, replacePendingWithEdit,
+} = useEditorData()
 
 const selectedKey = ref<string | null>(null)
 const showProfileModal = ref(false)
@@ -151,21 +152,11 @@ function nextYear() {
 }
 
 onMounted(async () => {
-  const [cfg, profs, evts, pendingItems] = await Promise.all([
-    api.config(),
-    api.profiles(),
-    api.events(),
-    api.myPending(),
-  ])
-  config.value = cfg
-  profiles.value = profs
-  events.value = evts
-  pending.value = pendingItems
-
+  const cfg = await load()
   if (!cfg.is_admin && cfg.emp_id) {
-    let k = Object.keys(evts).find(k => k.startsWith(cfg.emp_id + '|'))
+    let k = Object.keys(events.value).find(k => k.startsWith(cfg.emp_id + '|'))
     if (!k) {
-      const pItem = pendingItems.find(p => String(p.emp_id) === String(cfg.emp_id))
+      const pItem = pending.value.find(p => String(p.emp_id) === String(cfg.emp_id))
       if (pItem) k = `${pItem.emp_id}|${pItem.name}|${pItem.dept}`
     }
     selectedKey.value = k ?? null
@@ -193,20 +184,15 @@ function selectEmployee(key: string) {
   selectedKey.value = key
 }
 
-async function refresh() {
-  events.value = await api.events()
-  pending.value = await api.myPending()
-}
-
 async function onEditCell(payload: { oldTimestamp: string; newTimestamp: string }) {
   const { empId, name, dept } = selectedParts.value!
   try {
-    const res = await api.edit({ emp_id: empId, name, dept, old_timestamp: payload.oldTimestamp, new_timestamp: payload.newTimestamp })
+    const res = await submitEdit(empId, name, dept, payload.oldTimestamp, payload.newTimestamp)
     await refresh()
     let onUndo: (() => void) | undefined
     if (res.pending) {
       const p = myPending.value.find(p => p.action === 'EDIT' && p.timestamp === payload.oldTimestamp)
-      if (p) onUndo = () => { api.cancelMyPending(p.id).then(refresh) }
+      if (p) onUndo = () => { cancelPending(p.id).then(() => refresh()) }
     } else {
       onUndo = () => onEditCell({ oldTimestamp: payload.newTimestamp, newTimestamp: payload.oldTimestamp })
     }
@@ -219,12 +205,12 @@ async function onEditCell(payload: { oldTimestamp: string; newTimestamp: string 
 async function onAddEvent(payload: { timestamp: string }) {
   const { empId, name, dept } = selectedParts.value!
   try {
-    const res = await api.add({ emp_id: empId, name, dept, timestamp: payload.timestamp })
+    const res = await submitAdd(empId, name, dept, payload.timestamp)
     await refresh()
     let onUndo: (() => void) | undefined
     if (res.pending) {
       const p = myPending.value.find(p => p.action === 'ADD' && p.timestamp === payload.timestamp)
-      if (p) onUndo = () => { api.cancelMyPending(p.id).then(refresh) }
+      if (p) onUndo = () => { cancelPending(p.id).then(() => refresh()) }
     } else {
       onUndo = () => onDeleteEvent({ timestamp: payload.timestamp })
     }
@@ -237,12 +223,12 @@ async function onAddEvent(payload: { timestamp: string }) {
 async function onDeleteEvent(payload: { timestamp: string }) {
   const { empId, name, dept } = selectedParts.value!
   try {
-    const res = await api.delete({ emp_id: empId, name, dept, timestamp: payload.timestamp })
+    const res = await submitDelete(empId, name, dept, payload.timestamp)
     await refresh()
     let onUndo: (() => void) | undefined
     if (res.pending) {
       const p = myPending.value.find(p => p.action === 'DEL' && p.timestamp === payload.timestamp)
-      if (p) onUndo = () => { api.cancelMyPending(p.id).then(refresh) }
+      if (p) onUndo = () => { cancelPending(p.id).then(() => refresh()) }
     } else {
       onUndo = () => onAddEvent({ timestamp: payload.timestamp })
     }
@@ -255,10 +241,9 @@ async function onDeleteEvent(payload: { timestamp: string }) {
 async function onEditCellReplacePending(payload: { pendingId: string; oldTimestamp: string; newTimestamp: string }) {
   const { empId, name, dept } = selectedParts.value!
   try {
-    await api.cancelMyPending(payload.pendingId)
-    const res = await api.edit({ emp_id: empId, name, dept, old_timestamp: payload.oldTimestamp, new_timestamp: payload.newTimestamp })
-    toast(res.pending ? 'Submitted for approval.' : 'Saved.')
+    const res = await replacePendingWithEdit(payload.pendingId, empId, name, dept, payload.oldTimestamp, payload.newTimestamp)
     await refresh()
+    toast(res.pending ? 'Submitted for approval.' : 'Saved.')
   } catch (e) {
     toast(e instanceof ApiError ? e.message : 'Error saving.')
   }
@@ -266,9 +251,9 @@ async function onEditCellReplacePending(payload: { pendingId: string; oldTimesta
 
 async function onCancelPending(payload: { pendingId: string }) {
   try {
-    await api.cancelMyPending(payload.pendingId)
-    toast('Correction cancelled.')
+    await cancelPending(payload.pendingId)
     await refresh()
+    toast('Correction cancelled.')
   } catch (e) {
     toast(e instanceof ApiError ? e.message : 'Error cancelling.')
   }
@@ -276,7 +261,7 @@ async function onCancelPending(payload: { pendingId: string }) {
 
 async function onProfileSaved() {
   showProfileModal.value = false
-  config.value = await api.config()
+  await reloadConfig()
 }
 
 async function logout() {

@@ -3,24 +3,35 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 vi.mock('../../application/correctionService.js')
 vi.mock('../../application/reportService.js')
 vi.mock('../../application/userService.js')
+vi.mock('../../application/appConfigService.js')
 vi.mock('../../infrastructure/settings.js')
 
 import {
-  addCorrection,
   bulkDelete,
-  deleteCorrection,
-  editCorrection,
-  getPending,
-  queueCorrection,
+  cancelMyPending,
+  canSubmitCorrectionFor,
+  getMyPending,
+  submitCorrection,
 } from '../../application/correctionService.js'
 import {
+  canAccessReport,
   getEmployeeReport,
   getEmployeeReportUrls,
   getEventsData,
   getReportIndex,
 } from '../../application/reportService.js'
-import { changePassword, ERR_MISSING, ERR_NOT_FOUND, ERR_USERNAME_TAKEN, ERR_WRONG_PW, getProfiles, updateProfile } from '../../application/userService.js'
-import { ensureSecretKey, loadAppConfig, loadSettings } from '../../infrastructure/settings.js'
+import {
+  changePassword,
+  ERR_MISSING,
+  ERR_NOT_FOUND,
+  ERR_USERNAME_TAKEN,
+  ERR_WRONG_PW,
+  getProfiles,
+  getUserConfig,
+  updateProfile,
+} from '../../application/userService.js'
+import { getAppConfig } from '../../application/appConfigService.js'
+import { ensureSecretKey } from '../../infrastructure/settings.js'
 import { SignJWT } from 'jose'
 import editorRoutes from '../../routes/editor.js'
 import type { PendingItem } from '../../infrastructure/data.js'
@@ -31,16 +42,16 @@ const mockGetProfiles = vi.mocked(getProfiles)
 const mockGetReportIndex = vi.mocked(getReportIndex)
 const mockGetEmployeeReport = vi.mocked(getEmployeeReport)
 const mockGetEmployeeReportUrls = vi.mocked(getEmployeeReportUrls)
-const mockGetPending = vi.mocked(getPending)
+const mockGetMyPending = vi.mocked(getMyPending)
+const mockCancelMyPending = vi.mocked(cancelMyPending)
+const mockCanSubmitCorrectionFor = vi.mocked(canSubmitCorrectionFor)
+const mockSubmitCorrection = vi.mocked(submitCorrection)
+const mockBulkDelete = vi.mocked(bulkDelete)
+const mockCanAccessReport = vi.mocked(canAccessReport)
 const mockChangePassword = vi.mocked(changePassword)
 const mockUpdateProfile = vi.mocked(updateProfile)
-const mockLoadAppConfig = vi.mocked(loadAppConfig)
-const mockLoadSettings = vi.mocked(loadSettings)
-const mockAddCorrection = vi.mocked(addCorrection)
-const mockEditCorrection = vi.mocked(editCorrection)
-const mockDeleteCorrection = vi.mocked(deleteCorrection)
-const mockBulkDelete = vi.mocked(bulkDelete)
-const mockQueueCorrection = vi.mocked(queueCorrection)
+const mockGetUserConfig = vi.mocked(getUserConfig)
+const mockGetAppConfig = vi.mocked(getAppConfig)
 
 const TEST_SECRET = 'test-secret-editor-routes'
 
@@ -71,11 +82,15 @@ beforeEach(() => {
   mockGetReportIndex.mockReturnValue({ years: [], stems_by_year: {} })
   mockGetEmployeeReport.mockReturnValue(null)
   mockGetEmployeeReportUrls.mockReturnValue([])
-  mockGetPending.mockReturnValue([])
+  mockGetMyPending.mockReturnValue([])
+  mockCancelMyPending.mockReturnValue('ok')
+  mockCanSubmitCorrectionFor.mockReturnValue(true)
+  mockSubmitCorrection.mockReturnValue(false)
+  mockCanAccessReport.mockReturnValue(true)
   mockChangePassword.mockReturnValue(null)
   mockUpdateProfile.mockReturnValue(null)
-  mockLoadAppConfig.mockReturnValue({ time_format: '24h', theme: 'blue' })
-  mockLoadSettings.mockReturnValue({ employees: {}, admin_users: {}, secret_key: TEST_SECRET })
+  mockGetUserConfig.mockReturnValue({ full_name: '', email: '' })
+  mockGetAppConfig.mockReturnValue({ time_format: '24h', theme: 'blue' })
 })
 
 // ---------------------------------------------------------------------------
@@ -165,18 +180,19 @@ describe('GET /api/my-pending', () => {
   ]
 
   it('returns all pending items for admin', async () => {
-    mockGetPending.mockReturnValue(pendingItems)
+    mockGetMyPending.mockReturnValue(pendingItems)
     const res = await editorRoutes.request('/api/my-pending', { headers: await adminHeaders() })
     const body = await res.json()
     expect(body).toHaveLength(2)
+    expect(mockGetMyPending).toHaveBeenCalledWith(null, true)
   })
 
   it('filters pending items to own empId for employee', async () => {
-    mockGetPending.mockReturnValue(pendingItems)
+    mockGetMyPending.mockReturnValue([pendingItems[0]])
     const res = await editorRoutes.request('/api/my-pending', { headers: await empHeaders('1') })
     const body = await res.json()
     expect(body).toHaveLength(1)
-    expect(body[0].emp_id).toBe('1')
+    expect(mockGetMyPending).toHaveBeenCalledWith('1', false)
   })
 })
 
@@ -203,11 +219,13 @@ describe('GET /api/reports', () => {
 
 describe('GET /api/reports/:stem', () => {
   it('returns 403 for non-admin accessing a different employee stem', async () => {
+    mockCanAccessReport.mockReturnValue(false)
     const res = await editorRoutes.request('/api/reports/2024-2-alice', { headers: await empHeaders('1') })
     expect(res.status).toBe(403)
   })
 
   it('returns 403 when stem has fewer than 3 parts for non-admin', async () => {
+    mockCanAccessReport.mockReturnValue(false)
     const res = await editorRoutes.request('/api/reports/2024-1', { headers: await empHeaders('1') })
     expect(res.status).toBe(403)
   })
@@ -303,6 +321,7 @@ describe('POST /api/add', () => {
   const payload = { emp_id: '1', name: 'Alice', dept: 'Admin', timestamp: '2024-01-15 09:00:00' }
 
   it('returns 403 when non-admin tries to add for a different employee', async () => {
+    mockCanSubmitCorrectionFor.mockReturnValue(false)
     const res = await editorRoutes.request('/api/add', {
       method: 'POST',
       headers: { ...(await empHeaders('2')), 'Content-Type': 'application/json' },
@@ -311,18 +330,21 @@ describe('POST /api/add', () => {
     expect(res.status).toBe(403)
   })
 
-  it('calls addCorrection directly for admin and returns ok', async () => {
+  it('calls submitCorrection directly for admin and returns ok (not pending)', async () => {
+    mockSubmitCorrection.mockReturnValue(false)
     const res = await editorRoutes.request('/api/add', {
       method: 'POST',
       headers: { ...(await adminHeaders()), 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     })
     expect(res.status).toBe(200)
-    expect(mockAddCorrection).toHaveBeenCalled()
-    expect(mockQueueCorrection).not.toHaveBeenCalled()
+    const body = await res.json()
+    expect(body.pending).toBeUndefined()
+    expect(mockSubmitCorrection).toHaveBeenCalledWith('ADD', '1', 'Alice', 'Admin', '2024-01-15 09:00:00', null, 'admin', true)
   })
 
   it('queues the correction for a non-admin adding their own event', async () => {
+    mockSubmitCorrection.mockReturnValue(true)
     const res = await editorRoutes.request('/api/add', {
       method: 'POST',
       headers: { ...(await empHeaders('1')), 'Content-Type': 'application/json' },
@@ -331,7 +353,7 @@ describe('POST /api/add', () => {
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.pending).toBe(true)
-    expect(mockQueueCorrection).toHaveBeenCalled()
+    expect(mockSubmitCorrection).toHaveBeenCalledWith('ADD', '1', 'Alice', 'Admin', '2024-01-15 09:00:00', null, 'alice', false)
   })
 })
 
@@ -343,6 +365,7 @@ describe('POST /api/edit', () => {
   const payload = { emp_id: '1', name: 'Alice', dept: 'Admin', old_timestamp: '2024-01-15 09:00:00', new_timestamp: '2024-01-15 09:05:00' }
 
   it('returns 403 for non-admin editing a different employee', async () => {
+    mockCanSubmitCorrectionFor.mockReturnValue(false)
     const res = await editorRoutes.request('/api/edit', {
       method: 'POST',
       headers: { ...(await empHeaders('2')), 'Content-Type': 'application/json' },
@@ -351,17 +374,19 @@ describe('POST /api/edit', () => {
     expect(res.status).toBe(403)
   })
 
-  it('calls editCorrection directly for admin', async () => {
+  it('calls submitCorrection directly for admin', async () => {
+    mockSubmitCorrection.mockReturnValue(false)
     const res = await editorRoutes.request('/api/edit', {
       method: 'POST',
       headers: { ...(await adminHeaders()), 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     })
     expect(res.status).toBe(200)
-    expect(mockEditCorrection).toHaveBeenCalled()
+    expect(mockSubmitCorrection).toHaveBeenCalledWith('EDIT', '1', 'Alice', 'Admin', '2024-01-15 09:00:00', '2024-01-15 09:05:00', 'admin', true)
   })
 
   it('queues the edit correction for employee', async () => {
+    mockSubmitCorrection.mockReturnValue(true)
     const res = await editorRoutes.request('/api/edit', {
       method: 'POST',
       headers: { ...(await empHeaders('1')), 'Content-Type': 'application/json' },
@@ -369,7 +394,7 @@ describe('POST /api/edit', () => {
     })
     const body = await res.json()
     expect(body.pending).toBe(true)
-    expect(mockQueueCorrection).toHaveBeenCalled()
+    expect(mockSubmitCorrection).toHaveBeenCalledWith('EDIT', '1', 'Alice', 'Admin', '2024-01-15 09:00:00', '2024-01-15 09:05:00', 'alice', false)
   })
 })
 
@@ -381,6 +406,7 @@ describe('POST /api/delete', () => {
   const payload = { emp_id: '1', name: 'Alice', dept: 'Admin', timestamp: '2024-01-15 09:00:00' }
 
   it('returns 403 when non-admin tries to delete a different employee', async () => {
+    mockCanSubmitCorrectionFor.mockReturnValue(false)
     const res = await editorRoutes.request('/api/delete', {
       method: 'POST',
       headers: { ...(await empHeaders('2')), 'Content-Type': 'application/json' },
@@ -389,18 +415,19 @@ describe('POST /api/delete', () => {
     expect(res.status).toBe(403)
   })
 
-  it('calls deleteCorrection directly for admin', async () => {
+  it('calls submitCorrection directly for admin', async () => {
+    mockSubmitCorrection.mockReturnValue(false)
     const res = await editorRoutes.request('/api/delete', {
       method: 'POST',
       headers: { ...(await adminHeaders()), 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     })
     expect(res.status).toBe(200)
-    expect(mockDeleteCorrection).toHaveBeenCalled()
-    expect(mockQueueCorrection).not.toHaveBeenCalled()
+    expect(mockSubmitCorrection).toHaveBeenCalledWith('DEL', '1', 'Alice', 'Admin', '2024-01-15 09:00:00', null, 'admin', true)
   })
 
   it('queues DEL correction for employee deleting their own session', async () => {
+    mockSubmitCorrection.mockReturnValue(true)
     const res = await editorRoutes.request('/api/delete', {
       method: 'POST',
       headers: { ...(await empHeaders('1')), 'Content-Type': 'application/json' },
@@ -409,8 +436,7 @@ describe('POST /api/delete', () => {
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.pending).toBe(true)
-    expect(mockQueueCorrection).toHaveBeenCalledWith('DEL', '1', 'Alice', 'Admin', '2024-01-15 09:00:00', null, 'alice')
-    expect(mockDeleteCorrection).not.toHaveBeenCalled()
+    expect(mockSubmitCorrection).toHaveBeenCalledWith('DEL', '1', 'Alice', 'Admin', '2024-01-15 09:00:00', null, 'alice', false)
   })
 })
 
@@ -446,29 +472,27 @@ describe('POST /api/bulk-delete', () => {
 // ---------------------------------------------------------------------------
 
 describe('DELETE /api/my-pending/:id', () => {
-  const item: PendingItem = { id: 'abc', action: 'ADD', emp_id: '1', name: 'Alice', dept: 'Admin', timestamp: 't', new_timestamp: null, submitted_at: 's', submitted_by: 'alice' }
-
   it('returns 404 when pending item is not found', async () => {
-    mockGetPending.mockReturnValue([])
+    mockCancelMyPending.mockReturnValue('not_found')
     const res = await editorRoutes.request('/api/my-pending/missing', { method: 'DELETE', headers: await empHeaders('1') })
     expect(res.status).toBe(404)
   })
 
   it('returns 403 when non-owner tries to cancel', async () => {
-    mockGetPending.mockReturnValue([item])
+    mockCancelMyPending.mockReturnValue('denied')
     const token = await makeToken('other', false, '2')
     const res = await editorRoutes.request('/api/my-pending/abc', { method: 'DELETE', headers: { Cookie: `session=${token}` } })
     expect(res.status).toBe(403)
   })
 
   it('allows owner to cancel their own pending item', async () => {
-    mockGetPending.mockReturnValue([item])
+    mockCancelMyPending.mockReturnValue('ok')
     const res = await editorRoutes.request('/api/my-pending/abc', { method: 'DELETE', headers: await empHeaders('1') })
     expect(res.status).toBe(200)
   })
 
   it('allows admin to cancel any pending item', async () => {
-    mockGetPending.mockReturnValue([item])
+    mockCancelMyPending.mockReturnValue('ok')
     const res = await editorRoutes.request('/api/my-pending/abc', { method: 'DELETE', headers: await adminHeaders() })
     expect(res.status).toBe(200)
   })
@@ -480,7 +504,7 @@ describe('DELETE /api/my-pending/:id', () => {
 
 describe('GET /api/app-config', () => {
   it('returns defaults when no config is set', async () => {
-    mockLoadAppConfig.mockReturnValue({})
+    mockGetAppConfig.mockReturnValue({})
     const res = await editorRoutes.request('/api/app-config', { headers: await empHeaders('1') })
     expect(res.status).toBe(200)
     const body = await res.json()
@@ -489,7 +513,7 @@ describe('GET /api/app-config', () => {
   })
 
   it('returns stored time_format and theme', async () => {
-    mockLoadAppConfig.mockReturnValue({ time_format: '12h', theme: 'green' })
+    mockGetAppConfig.mockReturnValue({ time_format: '12h', theme: 'green' })
     const res = await editorRoutes.request('/api/app-config', { headers: await adminHeaders() })
     expect(res.status).toBe(200)
     const body = await res.json()
@@ -504,11 +528,7 @@ describe('GET /api/app-config', () => {
 
 describe('GET /api/config (extended)', () => {
   it('returns full_name and email for employee', async () => {
-    mockLoadSettings.mockReturnValue({
-      employees: { '1': { alias: 'Al', full_name: 'Alice Smith', email: 'alice@example.com', username: 'alice', password_hash: '', is_admin: false, enabled: true } },
-      admin_users: {},
-      secret_key: TEST_SECRET,
-    })
+    mockGetUserConfig.mockReturnValue({ full_name: 'Alice Smith', email: 'alice@example.com' })
     const res = await editorRoutes.request('/api/config', { headers: await empHeaders('1') })
     const body = await res.json()
     expect(body.full_name).toBe('Alice Smith')

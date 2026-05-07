@@ -1,9 +1,30 @@
 import { Hono } from 'hono'
-import { addCorrection, bulkDelete, deleteCorrection, editCorrection, getPending, queueCorrection, rejectPending } from '../application/correctionService.js'
-import { getEmployeeReport, getEmployeeReportUrls, getEventsData, getReportIndex } from '../application/reportService.js'
-import { changePassword, ERR_MISSING, ERR_NOT_FOUND, ERR_USERNAME_TAKEN, ERR_WRONG_PW, getProfiles, updateProfile } from '../application/userService.js'
+import {
+  bulkDelete,
+  cancelMyPending,
+  canSubmitCorrectionFor,
+  getMyPending,
+  submitCorrection,
+} from '../application/correctionService.js'
+import {
+  canAccessReport,
+  getEmployeeReport,
+  getEmployeeReportUrls,
+  getEventsData,
+  getReportIndex,
+} from '../application/reportService.js'
+import {
+  changePassword,
+  ERR_MISSING,
+  ERR_NOT_FOUND,
+  ERR_USERNAME_TAKEN,
+  ERR_WRONG_PW,
+  getProfiles,
+  getUserConfig,
+  updateProfile,
+} from '../application/userService.js'
+import { getAppConfig } from '../application/appConfigService.js'
 import { adminMiddleware, authMiddleware } from '../middleware/auth.js'
-import { loadAppConfig, loadSettings } from '../infrastructure/settings.js'
 
 const editor = new Hono()
 
@@ -18,18 +39,13 @@ editor.get('/api/profiles', c => c.json(getProfiles()))
 
 editor.get('/api/config', c => {
   const user = c.get('user')
-  let full_name: string | undefined, email: string | undefined
-  if (user.empId) {
-    const emp = loadSettings().employees[user.empId]
-    full_name = emp?.full_name ?? ''
-    email = emp?.email ?? ''
-  }
-  return c.json({ username: user.username, is_admin: user.isAdmin, emp_id: user.empId, restrict_edits: !user.isAdmin, full_name, email })
+  const profile = user.empId ? getUserConfig(user.empId) : {}
+  return c.json({ username: user.username, is_admin: user.isAdmin, emp_id: user.empId, restrict_edits: !user.isAdmin, ...profile })
 })
 
 editor.get('/api/app-config', c => {
-  const cfg = loadAppConfig()
-  return c.json({ theme: cfg.theme ?? 'blue', date_format: cfg.date_format ?? 'MM/dd(ddd)' })
+  const cfg = getAppConfig()
+  return c.json({ theme: cfg.theme ?? 'blue', time_format: cfg.time_format ?? '24h', date_format: cfg.date_format ?? 'MM/dd(ddd)' })
 })
 
 editor.get('/api/my-reports', c => {
@@ -40,23 +56,14 @@ editor.get('/api/my-reports', c => {
 
 editor.get('/api/my-pending', c => {
   const user = c.get('user')
-  let pending = getPending()
-  if (!user.isAdmin && user.empId) {
-    pending = pending.filter(p => String(p.emp_id) === String(user.empId))
-  }
-  return c.json(pending)
+  return c.json(getMyPending(user.empId, user.isAdmin))
 })
 
 editor.delete('/api/my-pending/:id', c => {
   const user = c.get('user')
-  const id = c.req.param('id')
-  const all = getPending()
-  const item = all.find(p => p.id === id)
-  if (!item) return c.json({ ok: false, error: 'Not found.' }, 404)
-  if (!user.isAdmin && item.submitted_by !== user.username) {
-    return c.json({ ok: false, error: 'Access denied.' }, 403)
-  }
-  rejectPending(id)
+  const result = cancelMyPending(c.req.param('id'), user.username, user.isAdmin)
+  if (result === 'not_found') return c.json({ ok: false, error: 'Not found.' }, 404)
+  if (result === 'denied') return c.json({ ok: false, error: 'Access denied.' }, 403)
   return c.json({ ok: true })
 })
 
@@ -65,11 +72,8 @@ editor.get('/api/reports', adminMiddleware, c => c.json(getReportIndex()))
 editor.get('/api/reports/:stem', c => {
   const user = c.get('user')
   const stem = c.req.param('stem')
-  if (!user.isAdmin) {
-    const parts = stem.split('-', 3)
-    if (parts.length < 3 || parts[1] !== String(user.empId)) {
-      return c.json({ ok: false, error: 'Access denied.' }, 403)
-    }
+  if (!canAccessReport(stem, user.empId, user.isAdmin)) {
+    return c.json({ ok: false, error: 'Access denied.' }, 403)
   }
   const data = getEmployeeReport(stem)
   if (!data) return c.json({ ok: false, error: 'Report not found.' }, 404)
@@ -104,43 +108,31 @@ editor.put('/api/change-password', async c => {
 editor.post('/api/add', async c => {
   const user = c.get('user')
   const d = await c.req.json<{ emp_id: string; name: string; dept: string; timestamp: string }>()
-  if (!user.isAdmin && String(d.emp_id) !== String(user.empId)) {
+  if (!canSubmitCorrectionFor(d.emp_id, user.empId, user.isAdmin)) {
     return c.json({ ok: false, error: 'Access denied.' }, 403)
   }
-  if (user.isAdmin) {
-    addCorrection(d.emp_id, d.name, d.dept, d.timestamp, user.username)
-    return c.json({ ok: true })
-  }
-  queueCorrection('ADD', d.emp_id, d.name, d.dept, d.timestamp, null, user.username)
-  return c.json({ ok: true, pending: true })
+  const pending = submitCorrection('ADD', d.emp_id, d.name, d.dept, d.timestamp, null, user.username, user.isAdmin)
+  return c.json({ ok: true, ...(pending && { pending: true }) })
 })
 
 editor.post('/api/edit', async c => {
   const user = c.get('user')
   const d = await c.req.json<{ emp_id: string; name: string; dept: string; old_timestamp: string; new_timestamp: string }>()
-  if (!user.isAdmin && String(d.emp_id) !== String(user.empId)) {
+  if (!canSubmitCorrectionFor(d.emp_id, user.empId, user.isAdmin)) {
     return c.json({ ok: false, error: 'Access denied.' }, 403)
   }
-  if (user.isAdmin) {
-    editCorrection(d.emp_id, d.name, d.dept, d.old_timestamp, d.new_timestamp, user.username)
-    return c.json({ ok: true })
-  }
-  queueCorrection('EDIT', d.emp_id, d.name, d.dept, d.old_timestamp, d.new_timestamp, user.username)
-  return c.json({ ok: true, pending: true })
+  const pending = submitCorrection('EDIT', d.emp_id, d.name, d.dept, d.old_timestamp, d.new_timestamp, user.username, user.isAdmin)
+  return c.json({ ok: true, ...(pending && { pending: true }) })
 })
 
 editor.post('/api/delete', async c => {
   const user = c.get('user')
   const d = await c.req.json<{ emp_id: string; name: string; dept: string; timestamp: string }>()
-  if (!user.isAdmin && String(d.emp_id) !== String(user.empId)) {
+  if (!canSubmitCorrectionFor(d.emp_id, user.empId, user.isAdmin)) {
     return c.json({ ok: false, error: 'Access denied.' }, 403)
   }
-  if (user.isAdmin) {
-    deleteCorrection(d.emp_id, d.name, d.dept, d.timestamp, user.username)
-    return c.json({ ok: true })
-  }
-  queueCorrection('DEL', d.emp_id, d.name, d.dept, d.timestamp, null, user.username)
-  return c.json({ ok: true, pending: true })
+  const pending = submitCorrection('DEL', d.emp_id, d.name, d.dept, d.timestamp, null, user.username, user.isAdmin)
+  return c.json({ ok: true, ...(pending && { pending: true }) })
 })
 
 editor.post('/api/bulk-delete', adminMiddleware, async c => {

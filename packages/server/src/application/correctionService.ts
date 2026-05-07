@@ -81,3 +81,41 @@ export function revertCorrection(itemId: string): boolean {
 export function undoCorrection(itemId: string): boolean {
   return removeHistoryItem(itemId)
 }
+
+export function submitCorrection(
+  action: 'ADD' | 'EDIT' | 'DEL',
+  empId: string,
+  name: string,
+  dept: string,
+  timestamp: string,
+  newTimestamp: string | null,
+  submittedBy: string,
+  isAdmin: boolean
+): boolean {
+  if (isAdmin) {
+    recordHistory(action, empId, name, dept, timestamp, newTimestamp, submittedBy)
+    return false
+  }
+  queueCorrection(action, empId, name, dept, timestamp, newTimestamp, submittedBy)
+  return true
+}
+
+export function canSubmitCorrectionFor(targetEmpId: string, requestEmpId: string | null, isAdmin: boolean): boolean {
+  if (isAdmin) return true
+  return requestEmpId !== null && String(requestEmpId) === String(targetEmpId)
+}
+
+export function getMyPending(empId: string | null, isAdmin: boolean): PendingItem[] {
+  const all = loadPending()
+  if (isAdmin || !empId) return all
+  return all.filter(p => String(p.emp_id) === String(empId))
+}
+
+export function cancelMyPending(id: string, username: string, isAdmin: boolean): 'ok' | 'not_found' | 'denied' {
+  const all = loadPending()
+  const item = all.find(p => p.id === id)
+  if (!item) return 'not_found'
+  if (!isAdmin && item.submitted_by !== username) return 'denied'
+  removePending(id)
+  return 'ok'
+}

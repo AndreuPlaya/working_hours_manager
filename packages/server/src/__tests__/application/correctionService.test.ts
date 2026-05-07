@@ -2,8 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 vi.mock('../../infrastructure/data.js')
 
-import { appendCorrection, addPending, loadPending, removePending } from '../../infrastructure/data.js'
-import type { PendingItem } from '../../infrastructure/data.js'
+import { addToHistory, addPending, loadHistory, loadPending, removeHistoryItem, removePending } from '../../infrastructure/data.js'
+import type { PendingItem, HistoryItem } from '../../infrastructure/data.js'
 import {
   addCorrection,
   deleteCorrection,
@@ -13,16 +13,27 @@ import {
   getPending,
   approvePending,
   rejectPending,
+  submitCorrection,
+  canSubmitCorrectionFor,
+  getMyPending,
+  cancelMyPending,
+  getHistory,
+  revertCorrection,
+  undoCorrection,
 } from '../../application/correctionService.js'
 
-const mockAppend = vi.mocked(appendCorrection)
+const mockAddToHistory = vi.mocked(addToHistory)
 const mockAddPending = vi.mocked(addPending)
 const mockLoadPending = vi.mocked(loadPending)
 const mockRemovePending = vi.mocked(removePending)
+const mockLoadHistory = vi.mocked(loadHistory)
+const mockRemoveHistoryItem = vi.mocked(removeHistoryItem)
 
 beforeEach(() => {
   vi.resetAllMocks()
   mockLoadPending.mockReturnValue([])
+  mockLoadHistory.mockReturnValue([])
+  mockRemoveHistoryItem.mockReturnValue(false)
 })
 
 // ---------------------------------------------------------------------------
@@ -30,9 +41,15 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 
 describe('addCorrection', () => {
-  it('calls appendCorrection with an ADD line', () => {
+  it('calls addToHistory with an ADD action', () => {
     addCorrection('1', 'Alice', 'Admin', '2024-01-15 09:00:00', 'admin')
-    expect(mockAppend).toHaveBeenCalledWith('ADD\t1\tAlice\tAdmin\t2024-01-15 09:00:00\t1')
+    const item: HistoryItem = mockAddToHistory.mock.calls[0][0]
+    expect(item.action).toBe('ADD')
+    expect(item.emp_id).toBe('1')
+    expect(item.name).toBe('Alice')
+    expect(item.dept).toBe('Admin')
+    expect(item.timestamp).toBe('2024-01-15 09:00:00')
+    expect(item.applied_by).toBe('admin')
   })
 })
 
@@ -41,9 +58,12 @@ describe('addCorrection', () => {
 // ---------------------------------------------------------------------------
 
 describe('deleteCorrection', () => {
-  it('calls appendCorrection with a DEL line', () => {
+  it('calls addToHistory with a DEL action', () => {
     deleteCorrection('1', 'Alice', 'Admin', '2024-01-15 09:00:00', 'admin')
-    expect(mockAppend).toHaveBeenCalledWith('DEL\t1\tAlice\tAdmin\t2024-01-15 09:00:00\t1')
+    const item: HistoryItem = mockAddToHistory.mock.calls[0][0]
+    expect(item.action).toBe('DEL')
+    expect(item.emp_id).toBe('1')
+    expect(item.applied_by).toBe('admin')
   })
 })
 
@@ -52,9 +72,12 @@ describe('deleteCorrection', () => {
 // ---------------------------------------------------------------------------
 
 describe('editCorrection', () => {
-  it('calls appendCorrection with an EDIT line', () => {
+  it('calls addToHistory with an EDIT action and new_timestamp', () => {
     editCorrection('1', 'Alice', 'Admin', '2024-01-15 09:00:00', '2024-01-15 09:05:00', 'admin')
-    expect(mockAppend).toHaveBeenCalledWith('EDIT\t1\tAlice\tAdmin\t2024-01-15 09:00:00\t2024-01-15 09:05:00\t1')
+    const item: HistoryItem = mockAddToHistory.mock.calls[0][0]
+    expect(item.action).toBe('EDIT')
+    expect(item.timestamp).toBe('2024-01-15 09:00:00')
+    expect(item.new_timestamp).toBe('2024-01-15 09:05:00')
   })
 })
 
@@ -63,15 +86,15 @@ describe('editCorrection', () => {
 // ---------------------------------------------------------------------------
 
 describe('bulkDelete', () => {
-  it('calls deleteCorrection for each item', () => {
+  it('calls addToHistory for each item', () => {
     const items = [
       { emp_id: '1', name: 'Alice', dept: 'Admin', timestamp: '2024-01-15 09:00:00' },
       { emp_id: '2', name: 'Bob', dept: 'HR', timestamp: '2024-01-15 10:00:00' },
     ]
     bulkDelete(items, 'admin')
-    expect(mockAppend).toHaveBeenCalledTimes(2)
-    expect(mockAppend).toHaveBeenNthCalledWith(1, 'DEL\t1\tAlice\tAdmin\t2024-01-15 09:00:00\t1')
-    expect(mockAppend).toHaveBeenNthCalledWith(2, 'DEL\t2\tBob\tHR\t2024-01-15 10:00:00\t1')
+    expect(mockAddToHistory).toHaveBeenCalledTimes(2)
+    expect(mockAddToHistory.mock.calls[0][0].emp_id).toBe('1')
+    expect(mockAddToHistory.mock.calls[1][0].emp_id).toBe('2')
   })
 })
 
@@ -84,7 +107,7 @@ describe('queueCorrection', () => {
     queueCorrection('ADD', '1', 'Alice', 'Admin', '2024-01-15 09:00:00', null, 'alice')
     const item: PendingItem = mockAddPending.mock.calls[0][0]
     expect(typeof item.id).toBe('string')
-    expect(item.id).toHaveLength(36) // UUID format
+    expect(item.id).toHaveLength(36)
     expect(item.action).toBe('ADD')
     expect(item.emp_id).toBe('1')
     expect(item.name).toBe('Alice')
@@ -132,25 +155,31 @@ describe('approvePending', () => {
     expect(approvePending('missing', 'admin')).toBe(false)
   })
 
-  it('appends an ADD correction and returns true for ADD action', () => {
+  it('calls addToHistory with ADD action and returns true', () => {
     const item: PendingItem = { id: 'x', action: 'ADD', emp_id: '1', name: 'Alice', dept: 'Admin', timestamp: '2024-01-15 09:00:00', new_timestamp: null, submitted_at: 's', submitted_by: 'u' }
     mockRemovePending.mockReturnValue(item)
     expect(approvePending('x', 'admin')).toBe(true)
-    expect(mockAppend).toHaveBeenCalledWith('ADD\t1\tAlice\tAdmin\t2024-01-15 09:00:00\t1')
+    const hist: HistoryItem = mockAddToHistory.mock.calls[0][0]
+    expect(hist.action).toBe('ADD')
+    expect(hist.emp_id).toBe('1')
+    expect(hist.applied_by).toBe('admin')
   })
 
-  it('appends an EDIT correction and returns true for EDIT action', () => {
+  it('calls addToHistory with EDIT action and new_timestamp', () => {
     const item: PendingItem = { id: 'y', action: 'EDIT', emp_id: '1', name: 'Alice', dept: 'Admin', timestamp: '2024-01-15 09:00:00', new_timestamp: '2024-01-15 09:05:00', submitted_at: 's', submitted_by: 'u' }
     mockRemovePending.mockReturnValue(item)
     expect(approvePending('y', 'admin')).toBe(true)
-    expect(mockAppend).toHaveBeenCalledWith('EDIT\t1\tAlice\tAdmin\t2024-01-15 09:00:00\t2024-01-15 09:05:00\t1')
+    const hist: HistoryItem = mockAddToHistory.mock.calls[0][0]
+    expect(hist.action).toBe('EDIT')
+    expect(hist.new_timestamp).toBe('2024-01-15 09:05:00')
   })
 
-  it('appends a DEL correction and returns true for DEL action', () => {
+  it('calls addToHistory with DEL action and returns true', () => {
     const item: PendingItem = { id: 'w', action: 'DEL', emp_id: '1', name: 'Alice', dept: 'Admin', timestamp: '2024-01-15 09:00:00', new_timestamp: null, submitted_at: 's', submitted_by: 'u' }
     mockRemovePending.mockReturnValue(item)
     expect(approvePending('w', 'admin')).toBe(true)
-    expect(mockAppend).toHaveBeenCalledWith('DEL\t1\tAlice\tAdmin\t2024-01-15 09:00:00\t1')
+    const hist: HistoryItem = mockAddToHistory.mock.calls[0][0]
+    expect(hist.action).toBe('DEL')
   })
 })
 
@@ -168,5 +197,146 @@ describe('rejectPending', () => {
   it('returns false when item is not found', () => {
     mockRemovePending.mockReturnValue(null)
     expect(rejectPending('missing')).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// submitCorrection
+// ---------------------------------------------------------------------------
+
+describe('submitCorrection', () => {
+  it('writes to history directly and returns false when isAdmin=true', () => {
+    const pending = submitCorrection('ADD', '1', 'Alice', 'Admin', '2024-01-15 09:00:00', null, 'admin', true)
+    expect(pending).toBe(false)
+    expect(mockAddToHistory).toHaveBeenCalledOnce()
+    expect(mockAddPending).not.toHaveBeenCalled()
+  })
+
+  it('queues via addPending and returns true when isAdmin=false', () => {
+    const pending = submitCorrection('ADD', '1', 'Alice', 'Admin', '2024-01-15 09:00:00', null, 'alice', false)
+    expect(pending).toBe(true)
+    expect(mockAddPending).toHaveBeenCalledOnce()
+    expect(mockAddToHistory).not.toHaveBeenCalled()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// canSubmitCorrectionFor
+// ---------------------------------------------------------------------------
+
+describe('canSubmitCorrectionFor', () => {
+  it('returns true for admin regardless of empId', () => {
+    expect(canSubmitCorrectionFor('2', null, true)).toBe(true)
+    expect(canSubmitCorrectionFor('2', '1', true)).toBe(true)
+  })
+
+  it('returns true when requestEmpId matches targetEmpId', () => {
+    expect(canSubmitCorrectionFor('1', '1', false)).toBe(true)
+  })
+
+  it('returns false when requestEmpId does not match targetEmpId', () => {
+    expect(canSubmitCorrectionFor('2', '1', false)).toBe(false)
+  })
+
+  it('returns false when requestEmpId is null and not admin', () => {
+    expect(canSubmitCorrectionFor('1', null, false)).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// getMyPending
+// ---------------------------------------------------------------------------
+
+describe('getMyPending', () => {
+  const items: PendingItem[] = [
+    { id: '1', action: 'ADD', emp_id: '1', name: 'A', dept: 'D', timestamp: 't', new_timestamp: null, submitted_at: 's', submitted_by: 'u' },
+    { id: '2', action: 'ADD', emp_id: '2', name: 'B', dept: 'D', timestamp: 't', new_timestamp: null, submitted_at: 's', submitted_by: 'u' },
+  ]
+
+  it('returns all items for admin', () => {
+    mockLoadPending.mockReturnValue(items)
+    expect(getMyPending(null, true)).toBe(items)
+  })
+
+  it('filters to own items for non-admin', () => {
+    mockLoadPending.mockReturnValue(items)
+    const result = getMyPending('1', false)
+    expect(result).toHaveLength(1)
+    expect(result[0].id).toBe('1')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// cancelMyPending
+// ---------------------------------------------------------------------------
+
+describe('cancelMyPending', () => {
+  const item: PendingItem = { id: 'x', action: 'ADD', emp_id: '1', name: 'A', dept: 'D', timestamp: 't', new_timestamp: null, submitted_at: 's', submitted_by: 'alice' }
+
+  it('returns not_found when item does not exist', () => {
+    mockLoadPending.mockReturnValue([])
+    expect(cancelMyPending('x', 'alice', false)).toBe('not_found')
+  })
+
+  it('returns denied when non-admin tries to cancel another user\'s item', () => {
+    mockLoadPending.mockReturnValue([item])
+    expect(cancelMyPending('x', 'bob', false)).toBe('denied')
+  })
+
+  it('returns ok when owner cancels own item', () => {
+    mockLoadPending.mockReturnValue([item])
+    mockRemovePending.mockReturnValue(item)
+    expect(cancelMyPending('x', 'alice', false)).toBe('ok')
+  })
+
+  it('returns ok when admin cancels any item', () => {
+    mockLoadPending.mockReturnValue([item])
+    mockRemovePending.mockReturnValue(item)
+    expect(cancelMyPending('x', 'admin', true)).toBe('ok')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// getHistory
+// ---------------------------------------------------------------------------
+
+describe('getHistory', () => {
+  it('returns history items in reverse order', () => {
+    const items = [
+      { id: '1', action: 'ADD' as const, emp_id: '1', name: 'A', dept: 'D', timestamp: '2024-01-01', new_timestamp: null, applied_by: 'admin', applied_at: 'a', undone: false },
+      { id: '2', action: 'DEL' as const, emp_id: '2', name: 'B', dept: 'D', timestamp: '2024-01-02', new_timestamp: null, applied_by: 'admin', applied_at: 'b', undone: false },
+    ]
+    mockLoadHistory.mockReturnValue(items)
+    const result = getHistory()
+    expect(result[0].id).toBe('2')
+    expect(result[1].id).toBe('1')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// revertCorrection / undoCorrection
+// ---------------------------------------------------------------------------
+
+describe('revertCorrection', () => {
+  it('returns true when item is found and removed', () => {
+    mockRemoveHistoryItem.mockReturnValue(true)
+    expect(revertCorrection('abc')).toBe(true)
+  })
+
+  it('returns false when item is not found', () => {
+    mockRemoveHistoryItem.mockReturnValue(false)
+    expect(revertCorrection('missing')).toBe(false)
+  })
+})
+
+describe('undoCorrection', () => {
+  it('returns true when item is found and removed', () => {
+    mockRemoveHistoryItem.mockReturnValue(true)
+    expect(undoCorrection('abc')).toBe(true)
+  })
+
+  it('returns false when item is not found', () => {
+    mockRemoveHistoryItem.mockReturnValue(false)
+    expect(undoCorrection('missing')).toBe(false)
   })
 })

@@ -7,7 +7,7 @@ vi.mock('../../application/reportService.js')
 vi.mock('../../application/userService.js')
 vi.mock('../../infrastructure/settings.js')
 
-import { approvePending, getPending, rejectPending } from '../../application/correctionService.js'
+import { approvePending, getPending, getHistory, rejectPending, undoCorrection, revertCorrection } from '../../application/correctionService.js'
 import { deleteRawFile, listRawFiles, saveRawFile } from '../../application/fileService.js'
 import { getEmployeeList, getPendingPreview } from '../../application/reportService.js'
 import {
@@ -41,9 +41,12 @@ const mockListRawFiles = vi.mocked(listRawFiles)
 const mockSaveRawFile = vi.mocked(saveRawFile)
 const mockDeleteRawFile = vi.mocked(deleteRawFile)
 const mockGetPending = vi.mocked(getPending)
+const mockGetHistory = vi.mocked(getHistory)
 const mockGetPendingPreview = vi.mocked(getPendingPreview)
 const mockApprovePending = vi.mocked(approvePending)
 const mockRejectPending = vi.mocked(rejectPending)
+const mockUndoCorrection = vi.mocked(undoCorrection)
+const mockRevertCorrection = vi.mocked(revertCorrection)
 
 const TEST_SECRET = 'test-secret-admin-routes'
 
@@ -81,6 +84,9 @@ beforeEach(() => {
   mockDeleteAdmin.mockReturnValue(null)
   mockApprovePending.mockReturnValue(true)
   mockRejectPending.mockReturnValue(true)
+  mockGetHistory.mockReturnValue([])
+  mockUndoCorrection.mockReturnValue(true)
+  mockRevertCorrection.mockReturnValue(true)
   mockLoadAppConfig.mockReturnValue({})
   mockGetDataRoot.mockReturnValue('/test-data')
 })
@@ -544,5 +550,72 @@ describe('POST /api/admin/app-config/favicon', () => {
     expect(mockMkdirSync).toHaveBeenCalled()
     expect(mockWriteFileSync).toHaveBeenCalled()
     expect(mockSaveAppConfig).toHaveBeenCalledWith(expect.objectContaining({ favicon_ext: 'png' }))
+  })
+})
+
+// ---------------------------------------------------------------------------
+// PUT /api/admin/app-config — date_format empty string branch
+// ---------------------------------------------------------------------------
+
+describe('PUT /api/admin/app-config (date_format)', () => {
+  it('sets date_format to undefined when empty string is provided', async () => {
+    mockLoadAppConfig.mockReturnValue({ time_format: '24h', theme: 'blue', date_format: 'MM/dd' })
+    const res = await adminRoutes.request('/api/admin/app-config', {
+      method: 'PUT',
+      headers: { ...(await adminHeaders()), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ date_format: '' }),
+    })
+    expect(res.status).toBe(200)
+    expect(mockSaveAppConfig).toHaveBeenCalledWith({ time_format: '24h', theme: 'blue', date_format: undefined })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// GET /api/admin/history
+// ---------------------------------------------------------------------------
+
+describe('GET /api/admin/history', () => {
+  it('returns history items', async () => {
+    const items = [{ id: '1', action: 'ADD', emp_id: '1', name: 'A', dept: 'D', timestamp: 't', new_timestamp: null, applied_by: 'admin', applied_at: 's' }]
+    mockGetHistory.mockReturnValue(items as any)
+    const res = await adminRoutes.request('/api/admin/history', { headers: await adminHeaders() })
+    expect(res.status).toBe(200)
+    expect(mockGetHistory).toHaveBeenCalled()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// POST /api/admin/history/:id/undo
+// ---------------------------------------------------------------------------
+
+describe('POST /api/admin/history/:id/undo', () => {
+  it('returns 404 when item is not found', async () => {
+    mockUndoCorrection.mockReturnValue(false)
+    const res = await adminRoutes.request('/api/admin/history/missing/undo', { method: 'POST', headers: await adminHeaders() })
+    expect(res.status).toBe(404)
+  })
+
+  it('returns 200 when item is found and undone', async () => {
+    mockUndoCorrection.mockReturnValue(true)
+    const res = await adminRoutes.request('/api/admin/history/abc/undo', { method: 'POST', headers: await adminHeaders() })
+    expect(res.status).toBe(200)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// POST /api/admin/history/:id/revert
+// ---------------------------------------------------------------------------
+
+describe('POST /api/admin/history/:id/revert', () => {
+  it('returns 404 when item is not found', async () => {
+    mockRevertCorrection.mockReturnValue(false)
+    const res = await adminRoutes.request('/api/admin/history/missing/revert', { method: 'POST', headers: await adminHeaders() })
+    expect(res.status).toBe(404)
+  })
+
+  it('returns 200 when item is found and reverted', async () => {
+    mockRevertCorrection.mockReturnValue(true)
+    const res = await adminRoutes.request('/api/admin/history/abc/revert', { method: 'POST', headers: await adminHeaders() })
+    expect(res.status).toBe(200)
   })
 })

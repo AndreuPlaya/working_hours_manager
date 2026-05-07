@@ -21,6 +21,7 @@ import {
   updateEmployee,
   updateProfile,
   getProfiles,
+  getUserConfig,
   ERR_MISSING,
   ERR_NOT_FOUND,
   ERR_USERNAME_TAKEN,
@@ -655,5 +656,26 @@ describe('updateProfile', () => {
     mockLoadSettings.mockReturnValue(makeSettings({ employees: { '1': emp } }))
     const result = updateProfile('alice', {})
     expect(result).toBeNull()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// getUserConfig
+// ---------------------------------------------------------------------------
+
+describe('getUserConfig', () => {
+  it('returns full_name and email for an existing employee', () => {
+    const emp = makeEmp({ full_name: 'Alice Smith', email: 'alice@example.com' })
+    mockLoadSettings.mockReturnValue(makeSettings({ employees: { '1': emp } }))
+    const result = getUserConfig('1')
+    expect(result.full_name).toBe('Alice Smith')
+    expect(result.email).toBe('alice@example.com')
+  })
+
+  it('returns empty strings when employee does not exist', () => {
+    mockLoadSettings.mockReturnValue(makeSettings({ employees: {} }))
+    const result = getUserConfig('99')
+    expect(result.full_name).toBe('')
+    expect(result.email).toBe('')
   })
 })

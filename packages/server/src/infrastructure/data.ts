@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFile
 import { join } from 'path'
 import { applyCorrections, parseCorrectionFile, parseFile } from '../domain/parser.js'
 import type { ClockEvent, CorrectionItem } from '../domain/models.js'
-import { getDataRoot, loadSettings } from './settings.js'
+import { getDataRoot } from './settings.js'
 
 export const PENDING_FILE = 'pending-corrections.json'
 export const HISTORY_FILE = 'correction-history.json'
@@ -48,14 +48,6 @@ export function loadEvents(): ClockEvent[] {
   }
   const historyCorrections = loadHistory().map(historyItemToCorrectionItem)
   return applyCorrections(raw, [...manualCorrections, ...historyCorrections])
-}
-
-export function applyNameOverrides(events: ClockEvent[]): ClockEvent[] {
-  const employees = loadSettings().employees ?? {}
-  return events.map(e => {
-    const fullName = employees[e.empId]?.full_name?.trim()
-    return fullName ? { ...e, name: fullName } : e
-  })
 }
 
 export interface PendingItem {

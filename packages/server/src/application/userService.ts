@@ -203,6 +203,11 @@ export function updateProfile(
   return null
 }
 
+export function getUserConfig(empId: string): { full_name: string; email: string } {
+  const emp = loadSettings().employees[empId]
+  return { full_name: emp?.full_name ?? '', email: emp?.email ?? '' }
+}
+
 export function getProfiles(): Record<string, { alias: string; full_name: string }> {
   const employees = loadSettings().employees ?? {}
   return Object.fromEntries(

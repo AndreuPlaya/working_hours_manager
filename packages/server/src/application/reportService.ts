@@ -1,10 +1,25 @@
 import { compute } from '../domain/calculator.js'
 import type { ClockEvent } from '../domain/models.js'
-import { applyNameOverrides, loadEvents } from '../infrastructure/data.js'
+import { loadEvents } from '../infrastructure/data.js'
 import { buildRows, fmtLocalTs, fmtMs, fmtTime } from '../infrastructure/reporter.js'
 import { loadSettings } from '../infrastructure/settings.js'
 import type { PendingItem } from '../infrastructure/data.js'
 import { listEmployees } from './userService.js'
+
+function applyNameOverrides(events: ClockEvent[]): ClockEvent[] {
+  const employees = loadSettings().employees ?? {}
+  return events.map(e => {
+    const fullName = employees[e.empId]?.full_name?.trim()
+    return fullName ? { ...e, name: fullName } : e
+  })
+}
+
+export function canAccessReport(stem: string, empId: string | null, isAdmin: boolean): boolean {
+  if (isAdmin) return true
+  if (!empId) return false
+  const parts = stem.split('-', 3)
+  return parts.length >= 3 && parts[1] === String(empId)
+}
 
 export function getEventsData(empId: string | null, isAdmin: boolean): Record<string, object[]> {
   let events = loadEvents()

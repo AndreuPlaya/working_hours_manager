@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { api, ApiError } from './api/client.js'
+import type { Config } from './api/client.js'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -13,14 +14,24 @@ const router = createRouter({
   ],
 })
 
+let cachedConfig: Config | null = null
+
+export function clearAuthCache(): void {
+  cachedConfig = null
+}
+
 router.beforeEach(async to => {
-  if (to.meta.public) return true
+  if (to.meta.public) {
+    if (to.path === '/login') cachedConfig = null
+    return true
+  }
 
   try {
-    const cfg = await api.auth.config()
-    if (to.meta.adminOnly && !cfg.is_admin) return '/'
+    if (!cachedConfig) cachedConfig = await api.auth.config()
+    if (to.meta.adminOnly && !cachedConfig.is_admin) return '/'
     return true
   } catch (e) {
+    cachedConfig = null
     if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
       try {
         const s = await api.auth.setupStatus()

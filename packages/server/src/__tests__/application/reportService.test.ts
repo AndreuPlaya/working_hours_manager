@@ -4,7 +4,7 @@ vi.mock('../../infrastructure/data.js')
 vi.mock('../../infrastructure/settings.js')
 vi.mock('../../application/userService.js')
 
-import { loadEvents, applyNameOverrides, loadPending } from '../../infrastructure/data.js'
+import { loadEvents, loadPending } from '../../infrastructure/data.js'
 import { loadSettings } from '../../infrastructure/settings.js'
 import { listEmployees } from '../../application/userService.js'
 import type { ClockEvent } from '../../domain/models.js'
@@ -17,10 +17,10 @@ import {
   getEmployeeReportUrls,
   getEmployeeList,
   getPendingPreview,
+  canAccessReport,
 } from '../../application/reportService.js'
 
 const mockLoadEvents = vi.mocked(loadEvents)
-const mockApplyNameOverrides = vi.mocked(applyNameOverrides)
 const mockLoadSettings = vi.mocked(loadSettings)
 const mockListEmployees = vi.mocked(listEmployees)
 const mockLoadPending = vi.mocked(loadPending)
@@ -97,7 +97,7 @@ describe('getEventsData', () => {
 
 describe('getReportIndex', () => {
   it('returns empty index when there are no events', () => {
-    mockApplyNameOverrides.mockReturnValue([])
+    mockLoadEvents.mockReturnValue([])
     const result = getReportIndex()
     expect(result.years).toHaveLength(0)
     expect(result.stems_by_year).toEqual({})
@@ -107,7 +107,7 @@ describe('getReportIndex', () => {
     const events = [
       ev('1', 'Alice', '2024-01-15T09:00:00Z'),
     ]
-    mockApplyNameOverrides.mockReturnValue(events)
+    mockLoadEvents.mockReturnValue(events)
     mockLoadSettings.mockReturnValue(makeSettings({
       employees: { '1': { alias: 'Al', full_name: 'Alice', username: 'alice', password_hash: '', is_admin: false, enabled: true } },
     }))
@@ -120,14 +120,14 @@ describe('getReportIndex', () => {
 
   it('uses name as display when neither alias nor username is set', () => {
     const events = [ev('1', 'Alice', '2024-01-15T09:00:00Z')]
-    mockApplyNameOverrides.mockReturnValue(events)
+    mockLoadEvents.mockReturnValue(events)
     const result = getReportIndex()
     expect(result.stems_by_year['2024'][0].display).toBe('Alice')
   })
 
   it('handles null employees in getReportIndex (falls back to empty object)', () => {
     const events = [ev('1', 'Alice', '2024-01-15T09:00:00Z')]
-    mockApplyNameOverrides.mockReturnValue(events)
+    mockLoadEvents.mockReturnValue(events)
     mockLoadSettings.mockReturnValue({ employees: null as any, admin_users: {}, secret_key: '' })
     const result = getReportIndex()
     expect(result.years).toContain('2024')
@@ -138,7 +138,7 @@ describe('getReportIndex', () => {
       ev('1', 'Alice', '2023-01-15T09:00:00Z'),
       ev('1', 'Alice', '2024-01-15T09:00:00Z'),
     ]
-    mockApplyNameOverrides.mockReturnValue(events)
+    mockLoadEvents.mockReturnValue(events)
     const { years } = getReportIndex()
     expect(years[0]).toBe('2024')
     expect(years[1]).toBe('2023')
@@ -151,17 +151,17 @@ describe('getReportIndex', () => {
 
 describe('getEmployeeReport', () => {
   it('returns null for a stem with fewer than 3 dash-separated parts', () => {
-    mockApplyNameOverrides.mockReturnValue([])
+    mockLoadEvents.mockReturnValue([])
     expect(getEmployeeReport('bad')).toBeNull()
   })
 
   it('returns null when year is not a number', () => {
-    mockApplyNameOverrides.mockReturnValue([])
+    mockLoadEvents.mockReturnValue([])
     expect(getEmployeeReport('notayear-1-alice')).toBeNull()
   })
 
   it('returns null when no events are found for that employee/year', () => {
-    mockApplyNameOverrides.mockReturnValue([])
+    mockLoadEvents.mockReturnValue([])
     expect(getEmployeeReport('2024-1-alice')).toBeNull()
   })
 
@@ -170,7 +170,7 @@ describe('getEmployeeReport', () => {
       ev('1', 'Alice', '2024-01-15T09:00:00Z'),
       ev('1', 'Alice', '2024-01-15T17:00:00Z'),
     ]
-    mockApplyNameOverrides.mockReturnValue(events)
+    mockLoadEvents.mockReturnValue(events)
     const report = getEmployeeReport('2024-1-alice') as Record<string, unknown>
     expect(report).not.toBeNull()
     expect(report.emp_id).toBe('1')
@@ -339,5 +339,32 @@ describe('getPendingPreview', () => {
     const before = preview.before as Record<string, unknown>
     const rows = before.rows as Array<Record<string, unknown>>
     expect(rows.some(r => r.clock_out === '?')).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// canAccessReport
+// ---------------------------------------------------------------------------
+
+describe('canAccessReport', () => {
+  it('returns true for admin regardless of stem', () => {
+    expect(canAccessReport('2024-2-bob', null, true)).toBe(true)
+    expect(canAccessReport('2024-2-bob', '1', true)).toBe(true)
+  })
+
+  it('returns true for non-admin when empId matches stem part', () => {
+    expect(canAccessReport('2024-1-alice', '1', false)).toBe(true)
+  })
+
+  it('returns false for non-admin when empId does not match', () => {
+    expect(canAccessReport('2024-2-alice', '1', false)).toBe(false)
+  })
+
+  it('returns false for non-admin with null empId', () => {
+    expect(canAccessReport('2024-1-alice', null, false)).toBe(false)
+  })
+
+  it('returns false when stem has fewer than 3 parts', () => {
+    expect(canAccessReport('2024-1', '1', false)).toBe(false)
   })
 })

@@ -7,8 +7,6 @@ vi.mock('../../infrastructure/settings.js')
 import {
   existsSync,
   readdirSync,
-  appendFileSync,
-  mkdirSync,
   readFileSync,
   writeFileSync,
   renameSync,
@@ -19,23 +17,20 @@ import {
   rawDir,
   correctionsDir,
   loadEvents,
-  applyNameOverrides,
-  appendCorrection,
   loadPending,
   savePending,
   addPending,
   removePending,
-  EDITOR_FILE,
+  addToHistory,
+  removeHistoryItem,
 } from '../../infrastructure/data.js'
-import type { PendingItem } from '../../infrastructure/data.js'
+import type { PendingItem, HistoryItem } from '../../infrastructure/data.js'
 import type { ClockEvent } from '../../domain/models.js'
 
 const mockExists = vi.mocked(existsSync)
 const mockReaddir = vi.mocked(readdirSync)
 const mockReadFile = vi.mocked(readFileSync)
 const mockWriteFile = vi.mocked(writeFileSync)
-const mockAppend = vi.mocked(appendFileSync)
-const mockMkdir = vi.mocked(mkdirSync)
 const mockRename = vi.mocked(renameSync)
 const mockGetDataRoot = vi.mocked(getDataRoot)
 const mockLoadSettings = vi.mocked(loadSettings)
@@ -113,64 +108,19 @@ describe('loadEvents', () => {
     expect(mockParseFile).not.toHaveBeenCalled()
     expect(mockParseCorrectionFile).not.toHaveBeenCalled()
   })
-})
 
-// ---------------------------------------------------------------------------
-// applyNameOverrides
-// ---------------------------------------------------------------------------
-
-describe('applyNameOverrides', () => {
-  const event: ClockEvent = { empId: '1', name: 'Raw Name', dept: 'Admin', timestamp: new Date() }
-
-  it('overrides the name when the employee has a full_name', () => {
-    mockLoadSettings.mockReturnValue({
-      employees: {
-        '1': { alias: '', full_name: 'Full Name', username: 'u', password_hash: '', is_admin: false, enabled: true },
-      },
-      admin_users: {},
-      secret_key: '',
-    })
-    const result = applyNameOverrides([event])
-    expect(result[0].name).toBe('Full Name')
-  })
-
-  it('keeps the original name when employee has no full_name', () => {
-    mockLoadSettings.mockReturnValue({
-      employees: {
-        '1': { alias: '', full_name: '', username: 'u', password_hash: '', is_admin: false, enabled: true },
-      },
-      admin_users: {},
-      secret_key: '',
-    })
-    const result = applyNameOverrides([event])
-    expect(result[0].name).toBe('Raw Name')
-  })
-
-  it('keeps the original name for unknown empId', () => {
-    const result = applyNameOverrides([event])
-    expect(result[0].name).toBe('Raw Name')
-  })
-
-  it('falls back to empty object when employees is null in settings', () => {
-    mockLoadSettings.mockReturnValue({ employees: null as any, admin_users: {}, secret_key: '' })
-    const result = applyNameOverrides([event])
-    expect(result[0].name).toBe('Raw Name')
-  })
-})
-
-// ---------------------------------------------------------------------------
-// appendCorrection
-// ---------------------------------------------------------------------------
-
-describe('appendCorrection', () => {
-  it('creates corrections dir and appends the line with a newline', () => {
-    appendCorrection('ADD\t1\tAlice\tAdmin\t2024-01-15 09:00:00\t1')
-    expect(mockMkdir).toHaveBeenCalledWith('/data/corrections', { recursive: true })
-    expect(mockAppend).toHaveBeenCalledWith(
-      `/data/corrections/${EDITOR_FILE}`,
-      'ADD\t1\tAlice\tAdmin\t2024-01-15 09:00:00\t1\n',
-      'utf-8'
-    )
+  it('applies history corrections via historyItemToCorrectionItem', () => {
+    const addItem = { id: '1', action: 'ADD', emp_id: '1', name: 'Alice', dept: 'Admin', timestamp: '2024-01-15 09:00:00', new_timestamp: null, applied_by: 'admin', applied_at: 's' }
+    const editItem = { id: '2', action: 'EDIT', emp_id: '1', name: 'Alice', dept: 'Admin', timestamp: '2024-01-15 09:00:00', new_timestamp: '2024-01-15 09:05:00', applied_by: 'admin', applied_at: 's' }
+    mockExists.mockImplementation((p: unknown) => (p as string).endsWith('correction-history.json'))
+    mockReaddir.mockReturnValue([] as unknown as ReturnType<typeof readdirSync>)
+    mockReadFile.mockReturnValue(JSON.stringify([addItem, editItem]))
+    loadEvents()
+    const [, corrections] = mockApplyCorrections.mock.calls[0]
+    expect(corrections).toHaveLength(2)
+    expect(corrections[0].action).toBe('ADD')
+    expect(corrections[1].action).toBe('EDIT')
+    expect(corrections[1].oldTimestamp).not.toBeNull()
   })
 })
 
@@ -283,5 +233,64 @@ describe('removePending', () => {
     mockExists.mockReturnValue(true)
     mockReadFile.mockReturnValue(JSON.stringify([item]))
     expect(removePending('unknown')).toBeNull()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// addToHistory
+// ---------------------------------------------------------------------------
+
+describe('addToHistory', () => {
+  const histItem: HistoryItem = {
+    id: 'h1',
+    action: 'ADD',
+    emp_id: '1',
+    name: 'Alice',
+    dept: 'Admin',
+    timestamp: '2024-01-15 09:00:00',
+    new_timestamp: null,
+    applied_at: '2024-01-15T10:00:00',
+    applied_by: 'admin',
+  }
+
+  it('appends the new item to the existing history', () => {
+    mockExists.mockReturnValue(true)
+    mockReadFile.mockReturnValue(JSON.stringify([]))
+    addToHistory(histItem)
+    const written = JSON.parse((mockWriteFile.mock.calls[0][1] as string))
+    expect(written).toHaveLength(1)
+    expect(written[0].id).toBe('h1')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// removeHistoryItem
+// ---------------------------------------------------------------------------
+
+describe('removeHistoryItem', () => {
+  const histItem: HistoryItem = {
+    id: 'h2',
+    action: 'DEL',
+    emp_id: '1',
+    name: 'Alice',
+    dept: 'Admin',
+    timestamp: '2024-01-15 09:00:00',
+    new_timestamp: null,
+    applied_at: '2024-01-15T10:00:00',
+    applied_by: 'admin',
+  }
+
+  it('returns true and removes the item when found', () => {
+    mockExists.mockReturnValue(true)
+    mockReadFile.mockReturnValue(JSON.stringify([histItem]))
+    expect(removeHistoryItem('h2')).toBe(true)
+    const written = JSON.parse((mockWriteFile.mock.calls[0][1] as string))
+    expect(written).toHaveLength(0)
+  })
+
+  it('returns false when the item id is not found', () => {
+    mockExists.mockReturnValue(true)
+    mockReadFile.mockReturnValue(JSON.stringify([histItem]))
+    expect(removeHistoryItem('unknown')).toBe(false)
   })
 })
